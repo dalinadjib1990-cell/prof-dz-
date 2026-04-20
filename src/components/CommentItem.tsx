@@ -3,7 +3,7 @@ import { db } from '../firebase';
 import { doc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { Comment } from '../types';
-import { MoreHorizontal, Edit3, Trash2, Reply, Send, X } from 'lucide-react';
+import { MoreHorizontal, Edit3, Trash2, Reply, Send, X, Image as ImageIcon } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { playSound } from '../lib/sounds';
@@ -156,7 +156,19 @@ export default function CommentItem({
               </div>
             </div>
           ) : (
-            <p className="text-sm text-slate-300 font-medium leading-relaxed">{comment.content}</p>
+            <div className="space-y-3">
+              {comment.content && <p className="text-sm text-slate-300 font-medium leading-relaxed">{comment.content}</p>}
+              {comment.imageUrl && (
+                <div className="rounded-xl overflow-hidden border border-slate-900 shadow-inner max-w-sm">
+                  <img 
+                    src={comment.imageUrl} 
+                    alt="Comment media" 
+                    className="w-full object-cover max-h-60 hover:scale-105 transition-transform duration-500" 
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              )}
+            </div>
           )}
         </div>
         

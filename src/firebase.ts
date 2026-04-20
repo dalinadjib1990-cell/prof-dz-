@@ -22,19 +22,6 @@ export const db = initializeFirestore(app, {
   ignoreUndefinedProperties: true,
 }, (firebaseConfig as any).firestoreDatabaseId || "(default)");
 
-// Enable offline persistence for a better user experience when connection is flaky
-enableMultiTabIndexedDbPersistence(db).catch((err) => {
-  if (err.code === 'failed-precondition') {
-    // Multiple tabs open, persistence can only be enabled in one tab at a time.
-    console.warn("Firestore persistence failed: Multiple tabs open.");
-  } else if (err.code === 'unimplemented') {
-    // The current browser does not support all of the features required to enable persistence
-    console.warn("Firestore persistence failed: Browser not supported.");
-  } else {
-    console.error("Firestore persistence error:", err);
-  }
-});
-
 export const storage = getStorage(app);
 
 // Test connection to Firestore as per guidelines with retry logic

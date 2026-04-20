@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db } from '../firebase';
-import { doc, getDoc, setDoc, updateDoc, onSnapshot, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, onSnapshot, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { UserProfile } from '../types';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 
@@ -20,7 +20,7 @@ export function useAuth() {
       
       if (u) {
         // Update lastSeen immediately on login
-        updateDoc(doc(db, 'users', u.uid), { lastSeen: Timestamp.now() }).catch(() => {});
+        updateDoc(doc(db, 'users', u.uid), { lastSeen: serverTimestamp() }).catch(() => {});
 
         // Set a timeout to prevent infinite loading if Firestore hangs
         loadingTimeout = setTimeout(() => {
@@ -34,7 +34,7 @@ export function useAuth() {
         // Update lastSeen periodically (every 2 minutes)
         const statusInterval = setInterval(() => {
           if (auth.currentUser) {
-            updateDoc(doc(db, 'users', auth.currentUser.uid), { lastSeen: Timestamp.now() }).catch(() => {});
+            updateDoc(doc(db, 'users', auth.currentUser.uid), { lastSeen: serverTimestamp() }).catch(() => {});
           }
         }, 120000);
 
@@ -76,8 +76,8 @@ export function useAuth() {
               uid: u.uid,
               displayName: u.displayName || 'Teacher',
               photoURL: u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName || 'T'}`,
-              createdAt: Timestamp.now(),
-              lastSeen: Timestamp.now(),
+              createdAt: serverTimestamp(),
+              lastSeen: serverTimestamp(),
               isProfileComplete: false,
               followers: [],
               following: [],
@@ -111,13 +111,13 @@ export function useAuth() {
                 waterGoal: 8,
                 waterCurrent: 0,
                 waterGlassCount: 0,
-                lastWaterReset: Timestamp.now()
+                lastWaterReset: serverTimestamp()
               }
             };
             
-            setDoc(docRef, newProfile).catch(e => console.error("Error creating public profile:", e));
+            setDoc(docRef, newProfile as any).catch(e => console.error("Error creating public profile:", e));
             setDoc(privateRef, privateData).catch(e => console.error("Error creating private profile:", e));
-            setProfile({ ...newProfile, ...privateData } as UserProfile);
+            setProfile({ ...newProfile, ...privateData } as any);
             setLoading(false);
           }
         }, (err: any) => {

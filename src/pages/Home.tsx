@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { db, storage } from '../firebase';
-import { collection, query, orderBy, onSnapshot, addDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, Timestamp, serverTimestamp, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadString, uploadBytesResumable } from 'firebase/storage';
 import { useAuth } from '../hooks/useAuth';
 import { Post } from '../types';
 import PostCard from '../components/PostCard';
-import { Send, Smile, Paperclip, GraduationCap, PenTool, X, WifiOff, Loader2, Globe, Users, Lock, ChevronDown } from 'lucide-react';
+import { Send, Smile, Paperclip, GraduationCap, PenTool, X, WifiOff, Loader2, Globe, Users, Lock, ChevronDown, Image as ImageIcon, Zap, ExternalLink, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { playSound } from '../lib/sounds';
@@ -14,11 +15,16 @@ import { useUpload } from '../hooks/useUpload';
 import { PrayerWaterBar } from '../components/PrayerWaterBar';
 
 export default function Home() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
+  const isAdmin = profile?.email === 'dalinadjib1990@gmail.com';
+  const isPremium = isAdmin || (profile?.premiumUntil ? profile.premiumUntil.toDate() > new Date() : false);
+
   const [posts, setPosts] = useState<Post[]>([]);
   const [content, setContent] = useState('');
   const [privacy, setPrivacy] = useState<'public' | 'friends' | 'private'>('public');
   const [selectedBg, setSelectedBg] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -34,7 +40,13 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+    if (!profile) return;
+
+    const q = query(
+      collection(db, 'posts'),
+      where('privacy', '==', 'public'),
+      orderBy('createdAt', 'desc')
+    );
     const unsubscribe = onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
       const postsData = snapshot.docs.map(doc => {
         const data = doc.data();
@@ -68,11 +80,28 @@ export default function Home() {
       }
     });
     return unsubscribe;
-  }, []);
+  }, [profile]);
+
+  const { startUpload } = useUpload();
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !profile) return;
+    
+    setSelectedImage(file);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const handleCreatePost = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!content.trim()) return;
+    if (!content.trim() && !selectedImage) return;
     if (!profile) {
       alert("Please wait for your profile to load.");
       return;
@@ -83,33 +112,41 @@ export default function Home() {
       return;
     }
 
-    const postBgs = [
-      { id: 'purple', class: 'bg-gradient-to-br from-purple-600 to-indigo-900' },
-      { id: 'blue', class: 'bg-gradient-to-br from-blue-600 to-cyan-600' },
-      { id: 'pink', class: 'bg-gradient-to-br from-rose-500 to-pink-600' },
-      { id: 'orange', class: 'bg-gradient-to-br from-orange-500 to-amber-500' },
-      { id: 'green', class: 'bg-gradient-to-br from-emerald-500 to-teal-600' },
-      { id: 'dark', class: 'bg-gradient-to-br from-slate-800 to-slate-950' },
-    ];
-
     setLoading(true);
     try {
-      await addDoc(collection(db, 'posts'), {
-        authorId: profile.uid,
-        authorName: profile.displayName || 'Teacher',
-        authorPhoto: profile.photoURL || '',
-        content: content.trim(),
-        privacy: privacy,
-        background: content.length < 150 ? selectedBg : null,
-        likes: [],
-        commentCount: 0,
-        imageUrl: '',
-        videoUrl: '',
-        createdAt: serverTimestamp(),
-        clientCreatedAt: Date.now(),
-      });
-      playSound('post');
+      if (selectedImage) {
+        // Use the startUpload hook but we need to wait for it or use a callback
+        // The startUpload hook in useUpload.tsx handles the addDoc internally
+        await startUpload(selectedImage, 'post', {
+          authorId: profile.uid,
+          authorName: profile.displayName || 'Teacher',
+          authorPhoto: profile.photoURL || '',
+          content: content.trim() || 'Shared an image ✨',
+          privacy: privacy,
+          likes: [],
+          commentCount: 0,
+        });
+      } else {
+        await addDoc(collection(db, 'posts'), {
+          authorId: profile.uid,
+          authorName: profile.displayName || 'Teacher',
+          authorPhoto: profile.photoURL || '',
+          content: content.trim(),
+          privacy: privacy,
+          background: content.length < 150 ? selectedBg : null,
+          likes: [],
+          commentCount: 0,
+          imageUrl: '',
+          videoUrl: '',
+          createdAt: serverTimestamp(),
+          clientCreatedAt: Date.now(),
+        });
+        playSound('post');
+      }
+      
       setSelectedBg(null);
+      setSelectedImage(null);
+      setImagePreview(null);
       setContent('');
     } catch (error: any) {
       console.error("Post Creation Error:", error);
@@ -186,25 +223,73 @@ export default function Home() {
         </motion.div>
       )}
 
+      {/* Quick Access Apps */}
+      {isPremium && (
+        <div className="grid grid-cols-2 gap-3 mb-6 animate-in fade-in slide-in-from-top-4 duration-500">
+          <a 
+            href="https://cour-qi.vercel.app/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="bg-slate-900/50 hover:bg-amber-500/10 border border-slate-800 hover:border-amber-500/50 p-4 rounded-2xl transition-all group flex flex-col items-center gap-2 text-center"
+          >
+            <div className="bg-amber-500/20 p-2 rounded-xl group-hover:scale-110 transition-transform">
+              <Zap className="w-5 h-5 text-amber-500" />
+            </div>
+            <span className="text-[10px] font-black text-slate-400 group-hover:text-amber-500 uppercase tracking-tighter">التطبيق المصحح</span>
+          </a>
+          <a 
+            href="https://pro-mat-psn3.vercel.app/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="bg-slate-900/50 hover:bg-emerald-500/10 border border-slate-800 hover:border-emerald-500/50 p-4 rounded-2xl transition-all group flex flex-col items-center gap-2 text-center"
+          >
+            <div className="bg-emerald-500/20 p-2 rounded-xl group-hover:scale-110 transition-transform">
+              <ExternalLink className="w-5 h-5 text-emerald-500" />
+            </div>
+            <span className="text-[10px] font-black text-slate-400 group-hover:text-emerald-500 uppercase tracking-tighter">مولد المذكرات</span>
+          </a>
+        </div>
+      )}
+
+      {/* Premium Tool CTA for Mobile */}
+      <div className="lg:hidden mb-6">
+        <Link 
+          to="/premium-tools"
+          className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl shadow-lg shadow-purple-500/20 group overflow-hidden relative"
+        >
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full translate-x-16 -translate-y-16 blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+          <div className="flex items-center gap-3 relative z-10">
+            <Sparkles className="w-6 h-6 text-white animate-pulse" />
+            <div>
+              <p className="text-white font-black text-sm">أدوات الذكاء الاصطناعي</p>
+              <p className="text-white/70 text-[10px] font-bold">مولد مذكرات، فروض، واختبارات</p>
+            </div>
+          </div>
+          <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm relative z-10">
+            <ChevronDown className="w-4 h-4 text-white -rotate-90" />
+          </div>
+        </Link>
+      </div>
+
       {/* Create Post Card */}
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-slate-900 rounded-3xl p-6 shadow-xl border border-slate-800"
+        className="bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl border border-slate-800"
       >
         <form onSubmit={handleCreatePost}>
-          <div className="flex gap-4 mb-4">
+          <div className="flex gap-3 sm:gap-4 mb-4">
             <img
               src={profile?.photoURL}
               alt={profile?.displayName}
-              className="w-12 h-12 rounded-2xl object-cover ring-2 ring-purple-500/20"
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl object-cover ring-2 ring-purple-500/20"
               referrerPolicy="no-referrer"
             />
             <div className="flex-1 space-y-4">
-              <div className={`relative rounded-2xl transition-all duration-500 ${content.length < 150 && selectedBg ? selectedBg : 'bg-slate-950'}`}>
+              <div className={`relative rounded-xl sm:rounded-2xl transition-all duration-500 ${content.length < 150 && selectedBg ? selectedBg : 'bg-slate-950'}`}>
                 <textarea
-                  placeholder={`Share your teaching experience, ${profile?.displayName?.split(' ')[0]}...`}
-                  className={`w-full bg-transparent border-none p-6 text-slate-100 placeholder:text-slate-500 focus:ring-0 outline-none resize-none transition-all font-black ${content.length < 150 && selectedBg ? 'text-center text-3xl min-h-[200px] flex items-center justify-center' : 'text-lg min-h-[120px]'}`}
+                  placeholder={`Share your experience, ${profile?.displayName?.split(' ')[0]}...`}
+                  className={`w-full bg-transparent border-none p-4 sm:p-6 text-slate-100 placeholder:text-slate-500 focus:ring-0 outline-none resize-none transition-all font-black ${content.length < 150 && selectedBg ? 'text-center text-xl sm:text-3xl min-h-[150px] sm:min-h-[200px] flex items-center justify-center' : 'text-base sm:text-lg min-h-[100px] sm:min-h-[120px]'}`}
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   onKeyDown={(e) => {
@@ -215,14 +300,30 @@ export default function Home() {
                 />
               </div>
 
-              {content.length < 150 && (
-                <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+              {imagePreview && (
+                <div className="relative rounded-xl sm:rounded-2xl overflow-hidden border border-slate-800 bg-slate-950">
+                  <img src={imagePreview} className="w-full max-h-[300px] object-cover" />
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setSelectedImage(null);
+                      setImagePreview(null);
+                    }}
+                    className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 shadow-lg transition-all"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {content.length < 150 && !selectedImage && (
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar no-scrollbar">
                   <button
                     type="button"
                     onClick={() => setSelectedBg(null)}
-                    className={`w-8 h-8 rounded-lg border-2 shrink-0 transition-all ${!selectedBg ? 'border-purple-500 bg-slate-800' : 'border-slate-800 bg-slate-950'}`}
+                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg border-2 shrink-0 transition-all ${!selectedBg ? 'border-purple-500 bg-slate-800' : 'border-slate-800 bg-slate-950'}`}
                   >
-                    <X className="w-4 h-4 mx-auto text-slate-500" />
+                    <X className="w-3.5 h-3.5 sm:w-4 sm:h-4 mx-auto text-slate-500" />
                   </button>
                   {[
                     'bg-gradient-to-br from-purple-600 to-indigo-900',
@@ -244,43 +345,55 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-800">
+            <div className="flex items-center gap-1 sm:gap-2">
               <div className="relative group/privacy">
                 <select 
                   value={privacy}
                   onChange={(e) => setPrivacy(e.target.value as any)}
-                  className="appearance-none bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold pl-8 pr-8 py-2 rounded-xl outline-none transition-all cursor-pointer border border-slate-700 hover:border-purple-500/50"
+                  className="appearance-none bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] sm:text-xs font-bold pl-7 sm:pl-8 pr-7 sm:pr-8 py-1.5 sm:py-2 rounded-lg sm:rounded-xl outline-none transition-all cursor-pointer border border-slate-700 hover:border-purple-500/50"
                 >
-                  <option value="public">Public - للجميع</option>
-                  <option value="friends">Friends - الزملاء فقط</option>
-                  <option value="private">Private - أنا فقط</option>
+                  <option value="public">Public</option>
+                  <option value="friends">Friends</option>
+                  <option value="private">Private</option>
                 </select>
-                <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
-                  {privacy === 'public' && <Globe className="w-3.5 h-3.5" />}
-                  {privacy === 'friends' && <Users className="w-3.5 h-3.5" />}
-                  {privacy === 'private' && <Lock className="w-3.5 h-3.5" />}
+                <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                  {privacy === 'public' && <Globe className="w-3 sm:w-3.5 h-3 sm:h-3.5" />}
+                  {privacy === 'friends' && <Users className="w-3 sm:w-3.5 h-3 sm:h-3.5" />}
+                  {privacy === 'private' && <Lock className="w-3 sm:w-3.5 h-3 sm:h-3.5" />}
                 </div>
-                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
-                  <ChevronDown className="w-3.5 h-3.5" />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+                  <ChevronDown className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
                 </div>
               </div>
+
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleImageSelect} 
+                accept="image/*" 
+                className="hidden" 
+              />
               
-              <button type="button" className="hidden sm:flex items-center gap-2 px-4 py-2 hover:bg-slate-800 text-slate-400 rounded-xl transition-all font-bold text-sm group">
-                <Paperclip className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                <span>Resource</span>
+              <button 
+                type="button" 
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 hover:bg-slate-800 text-slate-400 rounded-lg sm:rounded-xl transition-all font-bold text-xs sm:text-sm group"
+              >
+                <ImageIcon className="w-4 sm:w-5 h-4 sm:h-5 group-hover:scale-110 transition-transform text-purple-400" />
+                <span className="hidden xs:inline">الصورة</span>
               </button>
             </div>
             <button
               type="submit"
-              disabled={loading || !content.trim()}
-              className="flex items-center gap-2 px-8 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-800 disabled:text-slate-600 text-white font-black rounded-2xl shadow-lg shadow-purple-500/20 transition-all active:scale-95"
+              disabled={loading || (!content.trim() && !selectedImage)}
+              className="flex items-center gap-2 px-6 sm:px-8 py-2 sm:py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-800 disabled:text-slate-600 text-white font-black text-sm sm:text-base rounded-xl sm:rounded-2xl shadow-lg shadow-purple-500/20 transition-all active:scale-95"
             >
               {loading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <div className="w-4 sm:w-5 h-4 sm:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  <Send className="w-4 h-4" />
+                  <Send className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
                   <span>Publish</span>
                 </>
               )}

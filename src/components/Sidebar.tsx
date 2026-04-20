@@ -1,6 +1,6 @@
 import { NavLink, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { Home, User, Bell, Bookmark, Settings, Users, BookOpen, MessageSquare, TrendingUp, UserPlus, Sparkles, Wand2, CheckSquare } from 'lucide-react';
+import { Home, User, Bell, Bookmark, Settings, Users, BookOpen, MessageSquare, TrendingUp, UserPlus, Sparkles, Wand2, CheckSquare, FileText, Image, Share2, ExternalLink, Zap } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
@@ -57,14 +57,17 @@ export default function Sidebar() {
     return (now.getTime() - date.getTime()) < 300000; // 5 minutes
   };
 
+  const isPremium = (profile?.email === 'dalinadjib1990@gmail.com') || (profile?.premiumUntil ? profile.premiumUntil.toDate() > new Date() : false);
+
   const navItems = [
-    { icon: Home, label: 'Feed', path: '/' },
+    { icon: Home, label: 'Home', path: '/' },
     { icon: MessageSquare, label: 'Discussions', path: '/discussions' },
     { icon: Bell, label: 'Notifications', path: '/notifications', badge: unreadCount },
     { icon: Bookmark, label: 'Saved Resources', path: '/saved' },
     { icon: Users, label: 'Colleagues', path: '/colleagues' },
     { icon: BookOpen, label: 'Curriculum', path: '/curriculum' },
-    { icon: Sparkles, label: 'Premium Tools', path: '/premium-tools' },
+    { icon: Sparkles, label: 'أدوات الذكاء الاصطناعي', path: '/premium-tools' },
+    { icon: Image, label: 'Image Uploader', path: '/image-uploader' },
     { icon: User, label: 'My Profile', path: `/profile/${profile?.uid}` },
     { icon: Settings, label: 'Settings', path: '/settings' },
   ];
@@ -129,23 +132,34 @@ export default function Sidebar() {
         ))}
 
         {/* Premium Shortcuts */}
-        {profile?.premiumUntil && profile.premiumUntil.toDate() > new Date() && (
+        {isPremium && (
           <div className="py-2 space-y-1 mt-4 border-t border-slate-800/50">
             <p className="px-6 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">Premium Assistant</p>
-            <Link 
-              to="/premium-tools" 
+            <a 
+              href="https://pro-mat-psn3.vercel.app/" 
+              target="_blank" 
+              rel="noopener noreferrer"
               className="flex items-center gap-4 px-6 py-3 rounded-2xl font-bold text-slate-400 hover:bg-purple-600/10 hover:text-purple-400 transition-all group"
             >
               <Wand2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
               <span className="text-sm">مولد المذكرات</span>
-            </Link>
+            </a>
             <Link 
               to="/premium-tools" 
+              className="flex items-center gap-4 px-6 py-3 rounded-2xl font-bold text-slate-400 hover:bg-purple-600/10 hover:text-purple-400 transition-all group"
+            >
+              <FileText className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              <span className="text-sm">مولد فروض واختبارات</span>
+            </Link>
+            <a 
+              href="https://cour-qi.vercel.app/" 
+              target="_blank" 
+              rel="noopener noreferrer"
               className="flex items-center gap-4 px-6 py-3 rounded-2xl font-bold text-slate-400 hover:bg-blue-600/10 hover:text-blue-400 transition-all group"
             >
               <CheckSquare className="w-4 h-4 group-hover:scale-110 transition-transform" />
               <span className="text-sm">المصحح الذكي</span>
-            </Link>
+            </a>
           </div>
         )}
         
@@ -156,6 +170,26 @@ export default function Sidebar() {
           <MessageSquare className="w-5 h-5 transition-transform group-hover:scale-110" />
           <span>Show Chat Bubble</span>
         </button>
+
+        <button
+          onClick={() => {
+            if (navigator.share) {
+              navigator.share({
+                title: 'Teac DZ - Algerian Teachers Network',
+                text: 'Join the professional network for Algerian teachers and use AI tools for lesson planning.',
+                url: window.location.origin,
+              });
+            } else {
+              navigator.clipboard.writeText(window.location.origin);
+              alert('App link copied to clipboard!');
+            }
+          }}
+          className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-bold text-slate-500 hover:bg-slate-900 hover:text-purple-400 transition-all group"
+        >
+          <Share2 className="w-5 h-5 transition-transform group-hover:scale-110" />
+          <span>Share App - مشاركة التطبيق</span>
+        </button>
+
       </nav>
 
       <div className="bg-slate-900 rounded-3xl p-6 shadow-xl border border-slate-800">

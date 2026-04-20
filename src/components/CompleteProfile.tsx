@@ -241,8 +241,8 @@ export default function CompleteProfile() {
                     type="number"
                     min="0"
                     max="50"
-                    value={formData.yearsOfExperience}
-                    onChange={(e) => setFormData({ ...formData, yearsOfExperience: parseInt(e.target.value) })}
+                    value={isNaN(formData.yearsOfExperience) ? '' : formData.yearsOfExperience}
+                    onChange={(e) => setFormData({ ...formData, yearsOfExperience: e.target.value === '' ? 0 : parseInt(e.target.value) })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 pl-12 pr-4 text-white outline-none focus:ring-2 focus:ring-purple-500/50 transition-all"
                   />
                 </div>

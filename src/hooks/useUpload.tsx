@@ -1,29 +1,29 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import axios from 'axios';
+import imageCompression from 'browser-image-compression';
 import { storage, db } from '../firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { collection, addDoc, serverTimestamp, updateDoc, doc, arrayUnion, getDoc } from 'firebase/firestore';
 import { playSound } from '../lib/sounds';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Loader2, CheckCircle2, AlertCircle, Zap } from 'lucide-react';
 
-// Using ImgBB as a free alternative to Firebase Storage
-// Fallback key provided, but user should configure VITE_IMGBB_API_KEY in Secrets
-const IMGBB_API_KEY = (import.meta as any).env.VITE_IMGBB_API_KEY || 'b696417730e79786314811831c1722d5';
+const CLOUDINARY_CLOUD_NAME = 'doaxziqm7';
+const CLOUDINARY_UPLOAD_PRESET = 'nadjib dali';
 
 interface UploadTask {
   id: string;
   fileName: string;
   progress: number;
   status: 'uploading' | 'completed' | 'error';
-  type: 'post' | 'product' | 'profile' | 'message';
+  type: 'post' | 'product' | 'profile' | 'message' | 'comment';
   data?: any;
 }
 
 interface UploadContextType {
   activeUploads: UploadTask[];
-  startUpload: (file: File, type: 'post' | 'product' | 'profile' | 'message', data: any) => Promise<void>;
+  startUpload: (file: File, type: 'post' | 'product' | 'profile' | 'message' | 'comment', data: any) => Promise<void>;
   removeUpload: (id: string) => void;
 }
 
@@ -36,13 +36,13 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     setActiveUploads(prev => prev.filter(u => u.id !== id));
   }, []);
 
-  const startUpload = useCallback(async (file: File, type: 'post' | 'product' | 'profile' | 'message', data: any) => {
+  const startUpload = useCallback(async (file: File, type: 'post' | 'product' | 'profile' | 'message' | 'comment', data: any) => {
     const id = Math.random().toString(36).substring(7);
     const fileName = file.name;
 
     setActiveUploads(prev => [...prev, { id, fileName, progress: 0, status: 'uploading', type, data }]);
 
-    // Use ImgBB for images to avoid Firebase Storage billing issues
+    // Use Cloudinary for images as requested
     const isImage = file.type.startsWith('image/');
     
     if (!isImage) {
@@ -98,38 +98,46 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Image Upload via ImgBB (Free, no billing required)
+    // Image Upload via Cloudinary
     try {
-      // Check file size (ImgBB limit is 32MB, but we'll limit to 10MB for stability)
-      if (file.size > 10 * 1024 * 1024) {
-        throw new Error("File is too large. Max size is 10MB.");
+      let fileToUpload = file;
+
+      // COMPRESSION: Only for images, skipped for small files
+      if (isImage && file.size > 500 * 1024) { // Only compress if > 500KB
+        setActiveUploads(prev => prev.map(u => u.id === id ? { ...u, progress: 5 } : u)); // Show some move
+        try {
+          const options = {
+            maxSizeMB: 1.5,
+            maxWidthOrHeight: 1920,
+            useWebWorker: true,
+            initialQuality: 0.8
+          };
+          fileToUpload = await imageCompression(file, options);
+          console.log(`Image compressed from ${file.size / 1024 / 1024}MB to ${fileToUpload.size / 1024 / 1024}MB`);
+        } catch (compressionError) {
+          console.warn("Compression failed, uploading original:", compressionError);
+        }
       }
 
-      // Convert file to base64 for more reliable upload
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(',')[1]); // Remove data:image/xxx;base64,
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const base64Image = await base64Promise;
       const formData = new FormData();
-      formData.append('key', IMGBB_API_KEY);
-      formData.append('image', base64Image);
+      formData.append('file', fileToUpload);
+      formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
 
-      const response = await axios.post('https://api.imgbb.com/1/upload', formData, {
-        onUploadProgress: (progressEvent) => {
-          const progress = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 100));
-          setActiveUploads(prev => prev.map(u => u.id === id ? { ...u, progress } : u));
+      const response = await axios.post(
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, 
+        formData, 
+        {
+          onUploadProgress: (progressEvent) => {
+            // Cap visual progress at 95% until we get the server response
+            const uploadPercentage = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 100));
+            const progress = 5 + Math.round((uploadPercentage * 90) / 100); 
+            setActiveUploads(prev => prev.map(u => u.id === id ? { ...u, progress } : u));
+          }
         }
-      });
+      );
 
-      if (response.data?.data?.url) {
-        const downloadURL = response.data.data.url;
+      if (response.data?.secure_url) {
+        const downloadURL = response.data.secure_url;
         let firestoreSuccess = false;
 
         if (type === 'message') {
@@ -159,6 +167,29 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
           } catch (error) {
             handleFirestoreError(error, OperationType.CREATE, 'posts');
           }
+        } else if (type === 'comment') {
+          try {
+            await addDoc(collection(db, 'comments'), {
+              ...data,
+              imageUrl: downloadURL,
+              createdAt: serverTimestamp(),
+            });
+            
+            // If it's a comment, we might also need to increment the post comment count if not already done
+            // But here we rely on the component calling startUpload to handle the other side or provide necessary context
+            // Actually, incrementing here is better
+            if (data.postId) {
+              const { increment } = await import('firebase/firestore');
+              await updateDoc(doc(db, 'posts', data.postId), {
+                commentCount: increment(1)
+              });
+            }
+
+            playSound('comment');
+            firestoreSuccess = true;
+          } catch (error) {
+            handleFirestoreError(error, OperationType.CREATE, 'comments');
+          }
         } else if (type === 'profile') {
           try {
             await updateDoc(doc(db, 'users', data.uid), { photoURL: downloadURL });
@@ -183,11 +214,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch (err: any) {
-      console.error("ImgBB Upload Error:", err);
-      if (err.response) {
-        console.error("ImgBB Error Response Data:", JSON.stringify(err.response.data));
-        console.error("ImgBB Error Status:", err.response.status);
-      }
+      console.error("Cloudinary Upload Error:", err);
       setActiveUploads(prev => prev.map(u => u.id === id ? { ...u, status: 'error' } : u));
       setTimeout(() => removeUpload(id), 10000);
     }
@@ -210,10 +237,23 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  {upload.status === 'uploading' && <Loader2 className="w-3 h-3 text-purple-500 animate-spin" />}
+                  {upload.status === 'uploading' && (
+                    upload.progress < 10 && upload.fileName.match(/\.(jpg|jpeg|png|webp)$/i) ? (
+                      <Zap className="w-3 h-3 text-amber-400 animate-pulse" />
+                    ) : (
+                      <Loader2 className="w-3 h-3 text-purple-500 animate-spin" />
+                    )
+                  )}
                   {upload.status === 'completed' && <CheckCircle2 className="w-3 h-3 text-green-500" />}
                   {upload.status === 'error' && <AlertCircle className="w-3 h-3 text-red-500" />}
-                  <span className="text-[10px] font-black text-slate-400 uppercase truncate max-w-[120px]">{upload.fileName}</span>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black text-slate-400 uppercase truncate max-w-[120px]">{upload.fileName}</span>
+                    {upload.status === 'uploading' && upload.progress < 10 && upload.fileName.match(/\.(jpg|jpeg|png|webp)$/i) && (
+                      <span className="text-[8px] font-bold text-amber-400 uppercase">Optimizing...</span>
+                    ) || (
+                      <span className="text-[8px] font-bold text-slate-500 uppercase">{upload.type}</span>
+                    )}
+                  </div>
                 </div>
                 <span className="text-[10px] font-black text-purple-400">{Math.round(upload.progress)}%</span>
               </div>

@@ -172,7 +172,23 @@ export default function Profile() {
 
     fetchProfile();
 
-    const q = query(collection(db, 'posts'), where('authorId', '==', uid), orderBy('createdAt', 'desc'));
+    const isOwnProfile = profile?.uid === uid;
+    
+    // If it's the user's own profile, show all their posts. 
+    // Otherwise, show only public posts for this author.
+    const q = isOwnProfile 
+      ? query(
+          collection(db, 'posts'),
+          where('authorId', '==', uid),
+          orderBy('createdAt', 'desc')
+        )
+      : query(
+          collection(db, 'posts'),
+          where('authorId', '==', uid),
+          where('privacy', '==', 'public'),
+          orderBy('createdAt', 'desc')
+        );
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Post[]);
     }, (error) => {

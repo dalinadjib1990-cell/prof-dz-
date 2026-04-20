@@ -3,7 +3,7 @@ import { db } from '../firebase';
 import { doc, updateDoc, arrayUnion, arrayRemove, collection, addDoc, serverTimestamp, query, where, orderBy, onSnapshot, deleteDoc, getDocs, writeBatch, increment, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { Post, Comment } from '../types';
-import { Heart, MessageCircle, Share2, MoreHorizontal, Bookmark, GraduationCap, Send, Edit3, Trash2, Globe, Users, Lock as LockIcon, ChevronDown, X } from 'lucide-react';
+import { Heart, MessageCircle, Share2, MoreHorizontal, Bookmark, GraduationCap, Send, Edit3, Trash2, Globe, Users, Lock as LockIcon, ChevronDown, X, Image as ImageIcon } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
@@ -11,6 +11,7 @@ import React from 'react';
 import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { playSound } from '../lib/sounds';
 import CommentItem from './CommentItem';
+import { useUpload } from '../hooks/useUpload';
 
 interface PostCardProps {
   post: Post;
@@ -166,6 +167,24 @@ export default function PostCard({ post }: PostCardProps) {
     return () => unsubscribe();
   }, [showComments, post.id]);
 
+  const { startUpload } = useUpload();
+  const commentFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleCommentImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !profile) return;
+    
+    startUpload(file, 'comment', {
+      postId: post.id,
+      authorId: profile.uid,
+      authorName: profile.displayName,
+      authorPhoto: profile.photoURL,
+      content: newComment.trim() || 'تعليق بصورة ✨',
+    });
+    setNewComment('');
+    if (commentFileInputRef.current) commentFileInputRef.current.value = '';
+  };
+
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim() || !profile) return;
@@ -270,54 +289,52 @@ export default function PostCard({ post }: PostCardProps) {
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="bg-slate-900 rounded-3xl p-6 shadow-xl border border-slate-800 hover:border-purple-500/30 transition-all group"
+      className="bg-slate-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl border border-slate-800 hover:border-purple-500/30 transition-all group"
     >
-      <div className="flex items-center justify-between mb-6">
-        <Link to={`/profile/${post.authorId}`} className="flex items-center gap-4 group/author">
+      <div className="flex items-center justify-between mb-4 sm:mb-6">
+        <Link to={`/profile/${post.authorId}`} className="flex items-center gap-3 sm:gap-4 group/author overflow-hidden">
           <img
             src={post.authorPhoto}
             alt={post.authorName}
-            className="w-12 h-12 rounded-2xl object-cover ring-2 ring-purple-500/10 group-hover/author:ring-purple-500/30 transition-all"
+            className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl object-cover ring-2 ring-purple-500/10 group-hover/author:ring-purple-500/30 transition-all shrink-0"
             referrerPolicy="no-referrer"
           />
-          <div>
-            <h4 className="font-black text-slate-100 group-hover/author:text-purple-400 transition-colors">{post.authorName}</h4>
+          <div className="min-w-0">
+            <h4 className="font-black text-slate-100 group-hover/author:text-purple-400 transition-colors text-sm sm:text-base truncate">{post.authorName}</h4>
             <div className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
-                <span className="flex items-center gap-1 text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full">
-                  <GraduationCap className="w-3 h-3" />
-                  {post.authorId === profile?.uid ? (profile?.subject || 'Teacher') : 'Verified Teacher'}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[9px] sm:text-[10px] font-bold text-slate-500">
+                <span className="flex items-center gap-1 text-purple-400 bg-purple-500/10 px-1.5 sm:px-2 py-0.5 rounded-full whitespace-nowrap">
+                  <GraduationCap className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                  {post.authorId === profile?.uid ? (profile?.subject || 'Teacher') : 'Teacher'}
                 </span>
                 {post.createdAt && (
-                  <>
-                    <span>•</span>
-                    <span>{formatDistanceToNow(post.createdAt.toDate())} ago</span>
-                  </>
+                  <span className="whitespace-nowrap">{formatDistanceToNow(post.createdAt.toDate(), { addSuffix: false })}</span>
                 )}
                 {post.privacy && (
-                  <div className="flex items-center gap-1 text-slate-600">
+                  <div className="hidden sm:flex items-center gap-1 text-slate-600">
                     <span>•</span>
                     {post.privacy === 'public' && <Globe className="w-2.5 h-2.5" />}
                     {post.privacy === 'friends' && <Users className="w-2.5 h-2.5" />}
                     {post.privacy === 'private' && <LockIcon className="w-2.5 h-2.5" />}
-                    <span className="text-[9px] uppercase tracking-wider">
-                      {post.privacy === 'public' ? 'Public' : post.privacy === 'friends' ? 'Friends' : 'Private'}
-                    </span>
                   </div>
                 )}
               </div>
             </div>
           </div>
         </Link>
-        <div className="flex items-center gap-2 relative">
-          {post.authorId === profile?.uid && (
-            <div className="relative">
-              <button 
-                onClick={() => setShowMenu(!showMenu)}
-                className="p-2 text-slate-500 hover:text-slate-300 hover:bg-slate-800 rounded-xl transition-all"
-              >
-                <MoreHorizontal className="w-5 h-5" />
-              </button>
+        <div className="flex items-center gap-1 sm:gap-2 relative shrink-0">
+          {(post.authorId === profile?.uid || profile?.email === 'dalinadjib1990@gmail.com') && (
+            <div className="flex items-center gap-1">
+              {profile?.email === 'dalinadjib1990@gmail.com' && post.authorId !== profile?.uid && (
+                <span className="hidden sm:inline text-[9px] font-black bg-red-500/10 text-red-500 px-2 py-1 rounded-lg border border-red-500/20 uppercase tracking-tighter">Admin</span>
+              )}
+              <div className="relative">
+                <button 
+                  onClick={() => setShowMenu(!showMenu)}
+                  className="p-2 text-slate-500 hover:text-slate-300 hover:bg-slate-800 rounded-xl transition-all"
+                >
+                  <MoreHorizontal className="w-5 h-5" />
+                </button>
 
             <AnimatePresence initial={false}>
               {showMenu && (
@@ -339,57 +356,61 @@ export default function PostCard({ post }: PostCardProps) {
                   className="absolute right-0 mt-2 w-56 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl z-50 overflow-hidden"
                 >
                   <div className="p-2 space-y-1">
-                    <button
-                      onClick={() => {
-                        setIsEditing(true);
-                        setShowMenu(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-slate-300 hover:bg-slate-800 hover:text-purple-400 rounded-xl transition-all"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                      تعديل المنشور
-                    </button>
-                    
-                    <div className="h-px bg-slate-800 my-1 mx-2" />
-                    
-                    <div className="px-4 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                      الخصوصية - Privacy
-                    </div>
-                    
-                    <button
-                      onClick={() => updatePrivacy('public')}
-                      className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${privacy === 'public' ? 'text-purple-400 bg-purple-500/10' : 'text-slate-400 hover:bg-slate-800'}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Globe className="w-4 h-4" />
-                        عام - Public
-                      </div>
-                      {privacy === 'public' && <div className="w-1.5 h-1.5 bg-purple-500 rounded-full" />}
-                    </button>
+                    {post.authorId === profile?.uid && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setIsEditing(true);
+                            setShowMenu(false);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-slate-300 hover:bg-slate-800 hover:text-purple-400 rounded-xl transition-all"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                          تعديل المنشور
+                        </button>
+                        
+                        <div className="h-px bg-slate-800 my-1 mx-2" />
+                        
+                        <div className="px-4 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                          الخصوصية - Privacy
+                        </div>
+                        
+                        <button
+                          onClick={() => updatePrivacy('public')}
+                          className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${privacy === 'public' ? 'text-purple-400 bg-purple-500/10' : 'text-slate-400 hover:bg-slate-800'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Globe className="w-4 h-4" />
+                            عام - Public
+                          </div>
+                          {privacy === 'public' && <div className="w-1.5 h-1.5 bg-purple-500 rounded-full" />}
+                        </button>
 
-                    <button
-                      onClick={() => updatePrivacy('friends')}
-                      className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${privacy === 'friends' ? 'text-purple-400 bg-purple-500/10' : 'text-slate-400 hover:bg-slate-800'}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Users className="w-4 h-4" />
-                        الزملاء - Friends
-                      </div>
-                      {privacy === 'friends' && <div className="w-1.5 h-1.5 bg-purple-500 rounded-full" />}
-                    </button>
+                        <button
+                          onClick={() => updatePrivacy('friends')}
+                          className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${privacy === 'friends' ? 'text-purple-400 bg-purple-500/10' : 'text-slate-400 hover:bg-slate-800'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Users className="w-4 h-4" />
+                            الزملاء - Friends
+                          </div>
+                          {privacy === 'friends' && <div className="w-1.5 h-1.5 bg-purple-500 rounded-full" />}
+                        </button>
 
-                    <button
-                      onClick={() => updatePrivacy('private')}
-                      className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${privacy === 'private' ? 'text-purple-400 bg-purple-500/10' : 'text-slate-400 hover:bg-slate-800'}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <LockIcon className="w-4 h-4" />
-                        أنا فقط - Private
-                      </div>
-                      {privacy === 'private' && <div className="w-1.5 h-1.5 bg-purple-500 rounded-full" />}
-                    </button>
+                        <button
+                          onClick={() => updatePrivacy('private')}
+                          className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${privacy === 'private' ? 'text-purple-400 bg-purple-500/10' : 'text-slate-400 hover:bg-slate-800'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <LockIcon className="w-4 h-4" />
+                            أنا فقط - Private
+                          </div>
+                          {privacy === 'private' && <div className="w-1.5 h-1.5 bg-purple-500 rounded-full" />}
+                        </button>
 
-                    <div className="h-px bg-slate-800 my-1 mx-2" />
+                        <div className="h-px bg-slate-800 my-1 mx-2" />
+                      </>
+                    )}
 
                     <button
                       onClick={() => {
@@ -406,6 +427,7 @@ export default function PostCard({ post }: PostCardProps) {
               )}
             </AnimatePresence>
             </div>
+          </div>
           )}
         </div>
       </div>
@@ -567,10 +589,24 @@ export default function PostCard({ post }: PostCardProps) {
                   <input
                     type="text"
                     placeholder={replyTo ? "اكتب ردك..." : "Write a comment..."}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500/20 transition-all font-medium text-slate-100"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-12 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500/20 transition-all font-medium text-slate-100"
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
                   />
+                  <input 
+                    type="file" 
+                    ref={commentFileInputRef} 
+                    onChange={handleCommentImageSelect} 
+                    accept="image/*" 
+                    className="hidden" 
+                  />
+                  <button 
+                    type="button" 
+                    onClick={() => commentFileInputRef.current?.click()}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-purple-400 transition-colors"
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                  </button>
                   <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-500 hover:text-purple-400">
                     <Send className="w-4 h-4" />
                   </button>

@@ -24,10 +24,14 @@ export interface UserProfile {
   blockedUsers?: string[];
   bioBackground?: string;
   bioTextColor?: string;
-  lastSeen?: Timestamp;
-  createdAt: Timestamp;
-  premiumUntil?: Timestamp;
+  lastSeen?: Timestamp | any;
+  createdAt: Timestamp | any;
+  premiumUntil?: Timestamp | any;
   isActivated?: boolean;
+  lastGenerationDate?: Timestamp | any;
+  lastUsageResetDate?: Timestamp | any;
+  dailyGenCount?: number;
+  dailyCorrectCount?: number;
   settings?: UserSettings;
   reminders?: {
     prayer?: boolean;
@@ -37,7 +41,7 @@ export interface UserProfile {
     waterGoal?: number;
     waterCurrent?: number;
     waterGlassCount?: number;
-    lastWaterReset?: Timestamp;
+    lastWaterReset?: Timestamp | any;
   };
 }
 
@@ -110,9 +114,10 @@ export interface Comment {
   authorName: string;
   authorPhoto: string;
   content: string;
+  imageUrl?: string;
   parentId?: string;
   replyTo?: string;
-  createdAt: Timestamp;
+  createdAt: Timestamp | any;
 }
 
 export interface Notification {

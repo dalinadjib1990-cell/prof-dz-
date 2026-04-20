@@ -50,7 +50,7 @@ service cloud.firestore {
              data.uid == request.auth.uid &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 100 &&
              data.photoURL is string && data.photoURL.size() <= 1000 &&
-             data.createdAt == request.time &&
+             (request.method == 'create' ? data.createdAt == request.time : data.createdAt == existing().createdAt) &&
              (!('firstName' in data) || (data.firstName is string && data.firstName.size() <= 50)) &&
              (!('lastName' in data) || (data.lastName is string && data.lastName.size() <= 50)) &&
              (!('bio' in data) || (data.bio is string && data.bio.size() <= 1000)) &&
@@ -59,14 +59,14 @@ service cloud.firestore {
              (!('wilaya' in data) || (data.wilaya is string && data.wilaya.size() <= 100)) &&
              (!('level' in data) || (data.level is string && data.level.size() <= 100)) &&
              (!('yearsOfExperience' in data) || (data.yearsOfExperience is number)) &&
-             (!('gender' in data) || (data.gender is string && data.gender.size() <= 10)) &&
+             (!('gender' in data) || (data.gender is string && data.gender.size() <= 20)) &&
              (!('birthDate' in data) || (data.birthDate is string && data.birthDate.size() <= 20)) &&
              (!('role' in data) || (data.role is string && data.role.size() <= 50)) &&
              (!('rank' in data) || (data.rank is string && data.rank.size() <= 50)) &&
              (!('isProfileComplete' in data) || (data.isProfileComplete is bool)) &&
              (!('showEmail' in data) || (data.showEmail is bool)) &&
              (!('showPhone' in data) || (data.showPhone is bool)) &&
-             (!('lastSeen' in data) || (data.lastSeen == request.time)) &&
+             (!('lastSeen' in data) || (data.lastSeen == request.time || (request.method == 'update' && data.lastSeen == existing().lastSeen))) &&
              (!('followers' in data) || (data.followers is list && data.followers.size() <= 10000)) &&
              (!('following' in data) || (data.following is list && data.following.size() <= 10000)) &&
              (!('friends' in data) || (data.friends is list && data.friends.size() <= 5000)) &&
@@ -74,7 +74,8 @@ service cloud.firestore {
              (!('bioBackground' in data) || (data.bioBackground is string && data.bioBackground.size() <= 200)) &&
              (!('bioTextColor' in data) || (data.bioTextColor is string && data.bioTextColor.size() <= 50)) &&
              (!('isActivated' in data) || (data.isActivated is bool)) &&
-             (!('premiumUntil' in data) || (data.premiumUntil is timestamp));
+             (!('premiumUntil' in data) || (data.premiumUntil is timestamp)) &&
+             (!('lastGenerationDate' in data) || (data.lastGenerationDate is timestamp));
     }
 
     function isValidUserPrivateData(data) {
@@ -97,7 +98,7 @@ service cloud.firestore {
              (!('videoUrl' in data) || (data.videoUrl is string && data.videoUrl.size() <= 1000)) &&
              (!('background' in data) || (data.background == null || (data.background is string && data.background.size() <= 100))) &&
              (!('reactions' in data) || data.reactions is map) &&
-             data.createdAt == request.time;
+             (request.method == 'create' ? data.createdAt == request.time : data.createdAt == existing().createdAt);
     }
 
     function isValidComment(data) {
@@ -107,7 +108,7 @@ service cloud.firestore {
              data.content is string && data.content.size() > 0 && data.content.size() <= 2000 &&
              (!('parentId' in data) || (data.parentId is string)) &&
              (!('replyTo' in data) || (data.replyTo is string)) &&
-             data.createdAt == request.time;
+             (request.method == 'create' ? data.createdAt == request.time : data.createdAt == existing().createdAt);
     }
 
     function isValidNotification(data) {
@@ -117,7 +118,7 @@ service cloud.firestore {
              data.senderName is string &&
              data.type in ['like', 'comment', 'follow', 'missed_call'] &&
              data.read is bool &&
-             data.createdAt == request.time;
+             (request.method == 'create' ? data.createdAt == request.time : data.createdAt == existing().createdAt);
     }
 
     function isValidMessage(data) {
@@ -127,13 +128,13 @@ service cloud.firestore {
              data.participants is list && request.auth.uid in data.participants &&
              data.senderName is string &&
              data.seen is bool &&
-             data.createdAt == request.time &&
              (!('text' in data) || (data.text is string && data.text.size() <= 2000)) &&
              (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 1000)) &&
              (!('audioUrl' in data) || (data.audioUrl is string && data.audioUrl.size() <= 1000)) &&
              (!('videoUrl' in data) || (data.videoUrl is string && data.videoUrl.size() <= 1000)) &&
              (!('reactions' in data) || (data.reactions is map)) &&
-             (!('clientCreatedAt' in data) || (data.clientCreatedAt is int));
+             (!('clientCreatedAt' in data) || (data.clientCreatedAt is int)) &&
+             (request.method == 'create' ? data.createdAt == request.time : data.createdAt == existing().createdAt);
     }
 
     // ===============================================================
@@ -145,7 +146,7 @@ service cloud.firestore {
       allow list: if isSignedIn();
       allow create: if isOwner(userId) && isVerified() && isValidUserProfile(incoming());
       allow update: if (isOwner(userId) && isValidUserProfile(incoming()) && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'firstName', 'lastName', 'photoURL', 'bio', 'subject', 'school', 'wilaya', 'level', 'yearsOfExperience', 'gender', 'birthDate', 'role', 'rank', 'isProfileComplete', 'showEmail', 'showPhone', 'lastSeen', 'bioBackground', 'bioTextColor', 'blockedUsers'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'firstName', 'lastName', 'photoURL', 'bio', 'subject', 'school', 'wilaya', 'level', 'yearsOfExperience', 'gender', 'birthDate', 'role', 'rank', 'isProfileComplete', 'showEmail', 'showPhone', 'lastSeen', 'bioBackground', 'bioTextColor', 'blockedUsers', 'isActivated', 'premiumUntil', 'lastGenerationDate'])
         )) || (
           // Social interaction: anyone can add themselves to followers/following
           isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['followers', 'following'])
@@ -200,11 +201,11 @@ service cloud.firestore {
       allow delete: if (isOwner(existing().senderId)) || isAdmin();
     }
 
-    match /friendRequests/{requestId} {
-      allow read: if isSignedIn() && (request.auth.uid == resource.data.senderId || request.auth.uid == resource.data.receiverId);
-      allow create: if isSignedIn() && incoming().senderId == request.auth.uid && exists(/databases/$(database)/documents/users/$(incoming().receiverId));
-      allow update: if (isSignedIn() && (request.auth.uid == existing().receiverId || request.auth.uid == existing().senderId));
-      allow delete: if isSignedIn() && (request.auth.uid == existing().senderId || request.auth.uid == existing().receiverId);
+    match /invitations/{invitationId} {
+      allow read: if isSignedIn() && (request.auth.uid in resource.data.participants);
+      allow create: if isSignedIn() && incoming().senderId == request.auth.uid;
+      allow update: if isSignedIn() && (request.auth.uid in existing().participants);
+      allow delete: if isSignedIn() && (request.auth.uid in existing().participants);
     }
 
     match /products/{productId} {
@@ -222,16 +223,13 @@ service cloud.firestore {
       allow delete: if isSignedIn() && (request.auth.uid == existing().senderId || request.auth.uid == existing().recipientId);
     }
 
-    match /invitations/{invitationId} {
-      allow read: if isSignedIn() && (request.auth.uid == resource.data.senderId || request.auth.uid == resource.data.recipientId);
-      allow create: if isSignedIn() && incoming().senderId == request.auth.uid;
-      allow update: if isSignedIn() && (request.auth.uid == existing().senderId || request.auth.uid == existing().recipientId);
-      allow delete: if isSignedIn() && (request.auth.uid == existing().senderId || request.auth.uid == existing().recipientId);
+    match /typing/{roomId} {
+      allow read, write: if isSignedIn() && (roomId == 'global' || roomId.matches('.*' + request.auth.uid + '.*'));
     }
 
     // Connection test path
     match /_connection_test_/{docId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if true;
     }
   }
 }

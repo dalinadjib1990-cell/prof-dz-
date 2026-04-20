@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { Wand2, CheckSquare, Lock, Key, Mail, Phone, Sparkles, Send, Loader2, FileText, ClipboardCheck, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Wand2, CheckSquare, Lock, Key, Mail, Phone, Sparkles, Send, Loader2, FileText, ClipboardCheck, AlertCircle, CheckCircle2, Zap, ExternalLink, BookOpen, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../firebase';
-import { doc, updateDoc, Timestamp, collection, getDocs, query, where, deleteDoc } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp, collection, getDocs, query, where, deleteDoc, serverTimestamp, orderBy, onSnapshot, addDoc } from 'firebase/firestore';
 import { GoogleGenAI } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
 
@@ -29,7 +29,90 @@ export default function PremiumTools() {
   const [correctResult, setCorrectResult] = useState('');
   const [isCorrecting, setIsCorrecting] = useState(false);
 
-  const isPremium = profile?.premiumUntil ? profile.premiumUntil.toDate() > new Date() : false;
+  const isAdmin = profile?.email === 'dalinadjib1990@gmail.com';
+  const isPremium = isAdmin || (profile?.premiumUntil ? profile.premiumUntil.toDate() > new Date() : false);
+
+  const getRemainingAttempts = (type: 'gen' | 'correct') => {
+    if (isAdmin) return Infinity;
+    
+    const lastUse = profile?.lastUsageResetDate?.toDate();
+    const today = new Date();
+    const isNewDay = !lastUse || 
+      lastUse.getDate() !== today.getDate() || 
+      lastUse.getMonth() !== today.getMonth() || 
+      lastUse.getFullYear() !== today.getFullYear();
+
+    if (isNewDay) return type === 'gen' ? 1 : 10;
+    
+    if (type === 'gen') {
+      return Math.max(0, 1 - (profile?.dailyGenCount || 0));
+    } else {
+      return Math.max(0, 10 - (profile?.dailyCorrectCount || 0));
+    }
+  };
+
+  const updateUsage = async (type: 'gen' | 'correct') => {
+    if (isAdmin || !profile) return;
+
+    const lastUse = profile.lastUsageResetDate?.toDate();
+    const today = new Date();
+    const isNewDay = !lastUse || 
+      lastUse.getDate() !== today.getDate() || 
+      lastUse.getMonth() !== today.getMonth() || 
+      lastUse.getFullYear() !== today.getFullYear();
+
+    const updates: any = {
+      lastUsageResetDate: serverTimestamp(),
+      lastGenerationDate: serverTimestamp() // Keeping legacy for compatibility
+    };
+
+    if (isNewDay) {
+      updates.dailyGenCount = type === 'gen' ? 1 : 0;
+      updates.dailyCorrectCount = type === 'correct' ? 1 : 0;
+    } else {
+      if (type === 'gen') {
+        updates.dailyGenCount = (profile.dailyGenCount || 0) + 1;
+      } else {
+        updates.dailyCorrectCount = (profile.dailyCorrectCount || 0) + 1;
+      }
+    }
+
+    await updateDoc(doc(db, 'users', profile.uid), updates);
+  };
+
+  const canGenerate = (type: 'gen' | 'correct') => {
+    return getRemainingAttempts(type) > 0;
+  };
+
+  const [adminCodes, setAdminCodes] = useState<any[]>([]);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+
+  // Load codes for admin
+  useEffect(() => {
+    if (isAdmin) {
+      const q = query(collection(db, 'activation_codes'), orderBy('createdAt', 'desc'));
+      const unsubscribe = onSnapshot(q, (snap) => {
+        setAdminCodes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+      return () => unsubscribe();
+    }
+  }, [isAdmin]);
+
+  const generateNewCode = async () => {
+    if (!isAdmin) return;
+    const newCode = Math.random().toString(36).substring(2, 8).toUpperCase() + '-' + Math.floor(1000 + Math.random() * 9000);
+    try {
+      await addDoc(collection(db, 'activation_codes'), {
+        code: newCode,
+        createdAt: serverTimestamp(),
+        createdBy: profile?.email
+      });
+      alert(`تم توليد كود جديد: ${newCode}`);
+    } catch (err) {
+      console.error(err);
+      alert('فشل توليد الكود.');
+    }
+  };
 
   const handleActivate = async () => {
     if (!profile) return;
@@ -42,8 +125,8 @@ export default function PremiumTools() {
       const snap = await getDocs(q);
 
       if (snap.empty) {
-        // Fallback for demonstration: DALI-TEAC-2026
-        if (activationCode.trim() === 'DALI-TEAC-2026') {
+        // Fallback for demonstration: DALI-2026
+        if (activationCode.trim() === 'DALI-2026') {
           const expiryDate = new Date();
           expiryDate.setFullYear(expiryDate.getFullYear() + 1);
           await updateDoc(doc(db, 'users', profile.uid), {
@@ -52,10 +135,10 @@ export default function PremiumTools() {
           });
           setActivationCode('');
           setIsActivating(false);
-          alert('Demo code accepted! Your yearly premium subscription is now active.');
+          alert('تم قبول كود التفعيل التجريبي! اشتراكك السنوي نشط الآن.');
           return;
         }
-        setActivationError('Invalid activation code. Please contact the administrator.');
+        setActivationError('كود التفعيل غير صحيح. يرجى الاتصال بالمسؤول.');
         setIsActivating(false);
         return;
       }
@@ -74,14 +157,19 @@ export default function PremiumTools() {
       
       setActivationCode('');
       setIsActivating(false);
-      alert('Congratulations! Your yearly premium subscription is now active.');
+      alert('مبروك! اشتراكك السنوي المميز نشط الآن.');
     } catch (err: any) {
-      setActivationError(err.message || 'Activation failed.');
+      setActivationError(err.message || 'فشلت عملية التفعيل.');
       setIsActivating(false);
     }
   };
 
   const generateContent = async () => {
+    if (!canGenerate('gen')) {
+      alert('لقد استنفدت حد التوليد اليومي (وثيقة واحدة في اليوم).');
+      return;
+    }
+
     setIsGenerating(true);
     try {
       const prompt = `You are an expert Algerian teacher. Generate a high-quality ${genScope.replace('_', ' ')} for the subject "${genSubject}" and level "${genLevel}".
@@ -96,6 +184,8 @@ export default function PremiumTools() {
       });
 
       setGenResult(response.text || 'No generation result.');
+      
+      await updateUsage('gen');
     } catch (err) {
       console.error(err);
       alert('Generation failed.');
@@ -105,12 +195,17 @@ export default function PremiumTools() {
   };
 
   const correctContent = async () => {
+    if (!canGenerate('correct')) {
+      alert('لقد استنفدت حد التصحيح اليومي (10 تصحيحات في اليوم).');
+      return;
+    }
+
     setIsCorrecting(true);
     try {
       const prompt = `You are an expert educational corrector. Analyze the following student response or teacher content for subject "${profile?.subject}". 
       Content: ${correctText}
       Task: Provide a detailed correction, grade (out of 20), and constructive feedback.
-      Language: ${profile?.settings?.language === 'ar' ? 'Arabic' : 'French/English'}`;
+      Language: Arabic`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
@@ -118,6 +213,8 @@ export default function PremiumTools() {
       });
 
       setCorrectResult(response.text || 'No correction result.');
+
+      await updateUsage('correct');
     } catch (err) {
       console.error(err);
       alert('Correction failed.');
@@ -145,14 +242,14 @@ export default function PremiumTools() {
         <div className="w-full max-w-md bg-slate-900 rounded-[32px] p-8 border border-slate-800 shadow-2xl relative z-10">
           <h2 className="text-xl font-black text-white mb-6 flex items-center justify-center gap-2">
             <Key className="w-5 h-5 text-purple-500" />
-            Enter Activation Code
+            أدخل كود التفعيل
           </h2>
           
           <div className="space-y-4">
             <input 
               type="text" 
-              placeholder="Enter your 12-digit code..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-6 py-4 text-white font-mono focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+              placeholder="كود التفعيل (12 رقم)..."
+              className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-6 py-4 text-white font-mono focus:ring-2 focus:ring-purple-500 outline-none transition-all text-center"
               value={activationCode}
               onChange={(e) => setActivationCode(e.target.value)}
             />
@@ -170,22 +267,23 @@ export default function PremiumTools() {
               className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-black rounded-2xl transition-all shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2"
             >
               {isActivating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-              Activate Subscription
+              تفعيل الاشتراك السنوي
             </button>
           </div>
 
           <div className="mt-8 pt-8 border-t border-slate-800 space-y-4">
-            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Contact for Activation</p>
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest text-center">للحصول على كود التفعيل، اتصل بالمسؤول</p>
             <div className="flex flex-col gap-3">
-              <a href="mailto:dalinadjib1990@gmail.com" className="flex items-center gap-3 text-slate-300 hover:text-purple-400 transition-colors bg-slate-950 p-4 rounded-xl border border-slate-800 group">
-                <Mail className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                <span className="font-bold text-sm">dalinadjib1990@gmail.com</span>
-              </a>
               <a href="tel:0673831994" className="flex items-center gap-3 text-slate-300 hover:text-purple-400 transition-colors bg-slate-950 p-4 rounded-xl border border-slate-800 group">
-                <Phone className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                <Phone className="w-5 h-5 group-hover:scale-110 transition-transform text-purple-500" />
                 <span className="font-bold text-sm">0673831994</span>
               </a>
+              <a href="mailto:dalinadjib1990@gmail.com" className="flex items-center gap-3 text-slate-300 hover:text-purple-400 transition-colors bg-slate-950 p-4 rounded-xl border border-slate-800 group">
+                <Mail className="w-5 h-5 group-hover:scale-110 transition-transform text-purple-500" />
+                <span className="font-bold text-sm">dalinadjib1990@gmail.com</span>
+              </a>
             </div>
+            <p className="text-[10px] text-slate-600 font-bold text-center">الاشتراك صالح لمدة عام كامل • توليد واحد يومياً</p>
           </div>
         </div>
       </div>
@@ -194,21 +292,133 @@ export default function PremiumTools() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-purple-600 rounded-[40px] p-8 text-white shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+      {/* Admin Panel Button */}
+      {isAdmin && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="bg-slate-900 border border-purple-500/30 p-6 rounded-[32px] overflow-hidden relative shadow-2xl shadow-purple-500/10"
+        >
+          <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+          <div className="flex items-center justify-between gap-4 relative z-10">
+            <div>
+              <h3 className="text-xl font-black text-white flex items-center gap-2">
+                <Lock className="w-5 h-5 text-purple-500" />
+                لوحة تحكم المسؤول
+              </h3>
+              <p className="text-slate-400 text-xs font-medium">توليد وإدارة أكواد تفعيل المشتركين</p>
+            </div>
+            <button 
+              onClick={() => setIsAdminPanelOpen(!isAdminPanelOpen)}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg shadow-purple-500/20"
+            >
+              {isAdminPanelOpen ? 'إغلاق اللوحة' : 'فتح لوحة الأكواد'}
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {isAdminPanelOpen && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="mt-6 pt-6 border-t border-slate-800 space-y-4 overflow-hidden"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 text-sm font-bold">الأكواد المتوفرة ({adminCodes.length})</span>
+                  <button 
+                    onClick={generateNewCode}
+                    className="flex items-center gap-2 text-xs font-black bg-emerald-500/10 text-emerald-500 px-4 py-2 rounded-xl border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-all shadow-lg shadow-emerald-500/10"
+                  >
+                    <Plus className="w-4 h-4" />
+                    توليد كود جديد
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
+                  {adminCodes.length === 0 ? (
+                    <p className="text-slate-500 text-center py-8 text-xs font-bold col-span-full">لا يوجد أكواد نشطة حالياً</p>
+                  ) : (
+                    adminCodes.map((c) => (
+                      <div key={c.id} className="bg-slate-950 border border-slate-800 p-4 rounded-2xl group hover:border-purple-500/50 transition-all flex flex-col gap-1">
+                        <span className="text-lg font-mono font-black text-white select-all">{c.code}</span>
+                        <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">
+                          {c.createdAt?.toDate().toLocaleString('ar-DZ')}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      )}
+
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-slate-900 rounded-[40px] p-8 text-white shadow-2xl relative overflow-hidden border border-slate-800">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-purple-600/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
         <div className="relative z-10">
-          <p className="text-purple-200 text-sm font-black uppercase tracking-widest mb-1">Premium Dashboard</p>
-          <h1 className="text-4xl font-black mb-2">AI Teacher Assistant</h1>
-          <p className="text-purple-100 font-medium opacity-90">Revolutionize your teaching with pro AI tools.</p>
+          <p className="text-purple-400 text-sm font-black uppercase tracking-widest mb-1">الأدوات المميزة - Premium Tools</p>
+          <h1 className="text-4xl font-black mb-2 text-white">المؤطر التربوي الذكي</h1>
+          <p className="text-slate-400 font-medium">أدوات احترافية مدعومة بالذكاء الاصطناعي للأستاذ الجزائري.</p>
         </div>
-        <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md px-6 py-3 rounded-3xl border border-white/20 relative z-10">
-          <CheckCircle2 className="w-6 h-6 text-green-400" />
+        <div className="flex items-center gap-3 bg-purple-500/10 backdrop-blur-md px-6 py-3 rounded-3xl border border-purple-500/20 relative z-10">
+          <CheckCircle2 className="w-6 h-6 text-purple-500" />
           <div className="text-left">
-            <p className="text-[10px] font-black uppercase tracking-tighter text-white/60 leading-none">Subscription Active</p>
-            <p className="text-sm font-black">Until {profile.premiumUntil?.toDate().toLocaleDateString()}</p>
+            <p className="text-[10px] font-black uppercase tracking-tighter text-purple-500/60 leading-none">اشتراك نشط</p>
+            <p className="text-sm font-black text-white">حتى {profile.premiumUntil?.toDate().toLocaleDateString()}</p>
           </div>
         </div>
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <a 
+          href="https://cour-qi.vercel.app/" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="p-8 rounded-[40px] border-2 border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 hover:border-amber-500 transition-all group relative overflow-hidden flex flex-col items-center text-center"
+        >
+          <div className="bg-amber-500 p-4 rounded-2xl mb-4 shadow-lg shadow-amber-500/30 group-hover:scale-110 transition-transform">
+            <Zap className="w-8 h-8 text-white" />
+          </div>
+          <h2 className="text-xl font-black text-white mb-2">التطبيق المصحح المعتمد</h2>
+          <p className="text-amber-200/60 text-xs font-medium">افتح تطبيق التصحيح التلقائي المعتمد والمصحح تربوياً</p>
+          <div className="mt-4 flex items-center gap-2 text-amber-500 font-black text-[10px] uppercase tracking-widest">
+            <span>فتح التطبيق الآن</span>
+            <ExternalLink className="w-3 h-3" />
+          </div>
+        </a>
+
+        <a 
+          href="https://pro-mat-psn3.vercel.app/" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="p-8 rounded-[40px] border-2 border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500 transition-all group relative overflow-hidden flex flex-col items-center text-center"
+        >
+          <div className="bg-emerald-500 p-4 rounded-2xl mb-4 shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform">
+            <BookOpen className="w-8 h-8 text-white" />
+          </div>
+          <h2 className="text-xl font-black text-white mb-2">مولد المذكرات الشامل</h2>
+          <p className="text-emerald-200/60 text-xs font-medium">بناء المذكرات والملفات التعليمية والدروس النموذجية</p>
+          <div className="mt-4 flex items-center gap-2 text-emerald-500 font-black text-[10px] uppercase tracking-widest">
+            <span>فتح المولد الآن</span>
+            <ExternalLink className="w-3 h-3" />
+          </div>
+        </a>
+      </div>
+
+      {!isAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <div className={`p-4 rounded-2xl flex items-center gap-3 border ${getRemainingAttempts('gen') === 0 ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}>
+            <AlertCircle className="w-5 h-5" />
+            <p className="text-xs font-bold">توليد وثائق: {getRemainingAttempts('gen')} محاولة متبقية اليوم</p>
+          </div>
+          <div className={`p-4 rounded-2xl flex items-center gap-3 border ${getRemainingAttempts('correct') === 0 ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}>
+            <ClipboardCheck className="w-5 h-5" />
+            <p className="text-xs font-bold">تصحيح أوراق: {getRemainingAttempts('correct')} محاولات متبقية اليوم</p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Tool 1: Generator */}
@@ -221,29 +431,18 @@ export default function PremiumTools() {
           onClick={() => setActiveTool('generator')}
         >
           <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-            <Wand2 className="w-32 h-32" />
+            <FileText className="w-32 h-32" />
           </div>
           <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors ${activeTool === 'generator' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-500 group-hover:bg-slate-700'}`}>
             <FileText className="w-8 h-8" />
           </div>
-          <h2 className="text-2xl font-black text-white mb-2">مولد المذكرات والواجبات</h2>
+          <h2 className="text-2xl font-black text-white mb-2">مولد الفروض والاختبارات</h2>
           <p className="text-slate-400 font-medium text-sm leading-relaxed mb-6">
-            قم بتوليد مذكرات الأستاذ، الفروض والاختبارات بشكل احترافي وسريع باستخدام الذكاء الاصطناعي.
+            قم بتوليد فروض ومذكرات واختبارات نموذجية حسب المنهاج الجزائري بضغطة زر.
           </p>
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 text-purple-400 font-black text-xs uppercase tracking-widest">
-              <span>استخدام الأداة المدمجة</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </div>
-            <a 
-              href="https://pro-mat-psn3.vercel.app/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="mt-2 text-center py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-slate-500 hover:text-purple-400 hover:border-purple-500/30 transition-all"
-            >
-              فتح التطبيق الخارجي (Pro-Mat)
-            </a>
+          <div className="flex items-center gap-2 text-purple-400 font-black text-xs uppercase tracking-widest">
+            <span>استخدام الأداة</span>
+            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </div>
         </motion.div>
 
@@ -264,22 +463,11 @@ export default function PremiumTools() {
           </div>
           <h2 className="text-2xl font-black text-white mb-2">المصحح الذكي</h2>
           <p className="text-slate-400 font-medium text-sm leading-relaxed mb-6">
-            تصحيح الفروض والاختبارات وتقديم ملاحظات توجيهية للطلبة بشكل آلي.
+            أداة ذكية لتصحيح إجابات الطلبة وتقديم تقييم دقيق مع ملاحظات بناءة.
           </p>
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 text-blue-400 font-black text-xs uppercase tracking-widest">
-              <span>استخدام الأداة المدمجة</span>
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </div>
-            <a 
-              href="https://cour-qi-kc16.vercel.app/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="mt-2 text-center py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-slate-500 hover:text-blue-400 hover:border-blue-500/30 transition-all"
-            >
-              فتح التطبيق الخارجي (Cour-Qi)
-            </a>
+          <div className="flex items-center gap-2 text-blue-400 font-black text-xs uppercase tracking-widest">
+            <span>استخدام الأداة</span>
+            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </div>
         </motion.div>
       </div>
@@ -372,6 +560,21 @@ export default function PremiumTools() {
                 <div className="markdown-body prose prose-invert max-w-none">
                   <ReactMarkdown>{genResult}</ReactMarkdown>
                 </div>
+                {genResult && !isGenerating && (
+                  <div className="absolute bottom-4 right-4 flex gap-2">
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(genResult);
+                        alert('Generated content copied to clipboard!');
+                      }}
+                      className="bg-slate-900 border border-slate-800 p-3 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-purple-400 transition-all flex items-center gap-2"
+                      title="Copy to clipboard"
+                    >
+                      <ClipboardCheck className="w-5 h-5" />
+                      <span className="text-[10px] font-black uppercase">Copy Text</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
@@ -435,6 +638,21 @@ export default function PremiumTools() {
                 <div className="markdown-body prose prose-invert max-w-none">
                   <ReactMarkdown>{correctResult}</ReactMarkdown>
                 </div>
+                {correctResult && !isCorrecting && (
+                  <div className="absolute bottom-4 right-4 flex gap-2">
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(correctResult);
+                        alert('Correction copied to clipboard!');
+                      }}
+                      className="bg-slate-900 border border-slate-800 p-3 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-blue-400 transition-all flex items-center gap-2"
+                      title="Copy to clipboard"
+                    >
+                      <ClipboardCheck className="w-5 h-5" />
+                      <span className="text-[10px] font-black uppercase">Copy Result</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>

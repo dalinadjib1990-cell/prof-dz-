@@ -12,8 +12,10 @@ import Profile from './pages/Profile';
 import Notifications from './pages/Notifications';
 import Settings from './pages/Settings';
 import PremiumTools from './pages/PremiumTools';
+import CloudinaryUploader from './components/CloudinaryUploader';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
+import BottomNav from './components/BottomNav';
 import ChatBubble from './components/ChatBubble';
 import FriendSuggestions from './components/FriendSuggestions';
 import CompleteProfile from './components/CompleteProfile';
@@ -28,6 +30,12 @@ import { UploadProvider } from './hooks/useUpload';
 export default function App() {
   const { user, profile, loading, error, retry } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const handleToggle = () => setIsSidebarOpen(prev => !prev);
+    window.addEventListener('toggle-sidebar', handleToggle);
+    return () => window.removeEventListener('toggle-sidebar', handleToggle);
+  }, []);
 
   useEffect(() => {
     if (profile?.settings) {
@@ -126,9 +134,10 @@ export default function App() {
               <>
                 {user && profile && !profile.isProfileComplete && <CompleteProfile />}
                 {user && <Navbar />}
+                {user && <BottomNav />}
                 
-                {/* Mobile Sidebar Toggle */}
-                {user && (
+                {/* Mobile Sidebar Toggle - Disconnected to free screen space */}
+                {/* {user && (
                   <div className="lg:hidden fixed left-0 top-1/2 -translate-y-1/2 z-[60]">
                     <motion.button
                       whileHover={{ scale: 1.1 }}
@@ -140,7 +149,7 @@ export default function App() {
                       <ChevronRight className={`w-4 h-4 transition-transform ${isSidebarOpen ? 'rotate-180' : ''}`} />
                     </motion.button>
                   </div>
-                )}
+                )} */}
 
                 {/* Mobile Sidebar Overlay */}
                 <AnimatePresence>
@@ -177,8 +186,8 @@ export default function App() {
                   )}
                 </AnimatePresence>
 
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 lg:pb-8">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-8">
                     {user && (
                       <div className="hidden lg:block lg:col-span-3">
                         <Sidebar />
@@ -195,6 +204,7 @@ export default function App() {
                         <Route path="/colleagues" element={user ? <div className="p-8 bg-slate-900 rounded-3xl border border-slate-800 text-center"><h2 className="text-2xl font-black mb-4">Colleagues</h2><p className="text-slate-400">Coming soon...</p></div> : <Navigate to="/login" />} />
                         <Route path="/curriculum" element={user ? <div className="p-8 bg-slate-900 rounded-3xl border border-slate-800 text-center"><h2 className="text-2xl font-black mb-4">Curriculum</h2><p className="text-slate-400">Coming soon...</p></div> : <Navigate to="/login" />} />
                         <Route path="/premium-tools" element={user ? <PremiumTools /> : <Navigate to="/login" />} />
+                        <Route path="/image-uploader" element={user ? <CloudinaryUploader /> : <Navigate to="/login" />} />
                         <Route path="/settings" element={user ? <Settings /> : <Navigate to="/login" />} />
                         <Route path="*" element={<Navigate to="/" />} />
                       </Routes>
