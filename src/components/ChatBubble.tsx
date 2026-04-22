@@ -1059,7 +1059,7 @@ export default function ChatBubble() {
             drag
             dragMomentum={false}
             dragElastic={0.1}
-            className="absolute bottom-24 right-0 w-80 sm:w-96 h-[500px] bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col shadow-purple-500/10 z-50"
+            className="fixed bottom-4 right-4 sm:bottom-24 sm:right-0 w-[calc(100vw-2rem)] sm:w-96 h-[500px] bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col shadow-purple-500/10 z-50"
           >
             {/* Header */}
             <div className="p-5 bg-gradient-to-r from-purple-600 to-indigo-600 flex items-center justify-between">
@@ -1103,7 +1103,7 @@ export default function ChatBubble() {
                   </>
                 )}
               </div>
-              <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1">
                 {activeChat && activeChat.uid !== 'global' && (
                   <>
                     <button 
@@ -1118,21 +1118,17 @@ export default function ChatBubble() {
                       onClick={() => handleStartCall('audio')}
                       disabled={!isOnline(activeChat.lastSeen)}
                       className={`p-2 rounded-xl transition-all ${!isOnline(activeChat.lastSeen) ? 'text-white/20 cursor-not-allowed' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
-                      title={isOnline(activeChat.lastSeen) ? "Audio Call" : "User Offline"}
+                      title={isOnline(activeChat.lastSeen) ? "Audio Call" : "Offline"}
                     >
                       <Phone className="w-4 h-4" />
                     </button>
-                    <button 
-                      onClick={() => handleStartCall('video')}
-                      disabled={!isOnline(activeChat.lastSeen)}
-                      className={`p-2 rounded-xl transition-all ${!isOnline(activeChat.lastSeen) ? 'text-white/20 cursor-not-allowed' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
-                      title={isOnline(activeChat.lastSeen) ? "Video Call" : "User Offline"}
-                    >
-                      <Video className="w-4 h-4" />
-                    </button>
                   </>
                 )}
-                <button onClick={() => setIsOpen(false)} className="text-white/80 hover:text-white p-2 hover:bg-white/10 rounded-xl transition-all">
+                <button 
+                  onClick={() => setIsOpen(false)} 
+                  className="bg-white/10 text-white p-2 hover:bg-red-500 rounded-xl transition-all shadow-lg border border-white/20"
+                  title="Close / أغلق"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>

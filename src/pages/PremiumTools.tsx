@@ -342,72 +342,52 @@ export default function PremiumTools() {
       const teacherName = isGuest ? "أستاذ زائر" : `${teacherFirstName} ${teacherLastName}`;
       const schoolName = isGuest ? "مؤسسة زائرة" : school;
 
-      let prompt = `أنت خبير تربوي جزائري رائد، متخصص في المنهاج الوطني الجزائري (G2) للجيل الثاني.
-      مهمتك هي صياغة ${genScope === 'lesson_plan' ? 'مذكرة بيداغوجية احترافية' : 'تقويم رسمي'} يطابق النماذج المعتمدة لوزارة التربية الوطنية.
-      
-      [المعلومات العامة]:
-      - الأستاذ: ${teacherName} | المؤسسة: ${schoolName}
-      - الطور: ${phase} | المستوى: ${level} | المادة: ${subject}
-      - اللغة المطلوبة للتوليد: ${genLanguage} (ar=Arabic, fr=French, en=English)
+      let prompt = `أنت "المفتش التربوي الرقمي"، خبير أول في المنهاج الوطني الجزائري (الجيل الثاني G2).
+      مهمتك هي صياغة "مذكرة بيداغوجية" (Fiche Pédagogique) احترافية وعميقة، تتخطى كونها مجرد نص إلى كونها خطة عمل ميدانية دقيقة.
 
-      [البيانات البيداغوجية المتوفرة]:
-      - رقم المقطع/Sequence: ${sequenceNum || sectionNum}
-      - المشروع/Projet: ${projectNum}
-      - الميدان/Domain: ${field}
-      - المورد/Topic: ${topic}
-      - المهمة/Task: ${tache}
-      - النشاط/Activity: ${activity}
-      - الهدف التعلمي/Objective: ${learningObjective || competency}
-      - السندات/Materials: ${materials}
+      [المعطيات الإدارية]:
+      الأستاذ: ${teacherName} | المؤسسة: ${schoolName}
+      الطور: ${phase} | المستوى: ${level} | المادة: ${subject}
+      رقم المقطع: ${sequenceNum || sectionNum} | رقم الحصة/المذكرة: (يتم استنتاجه)
+      اللغة الأصلية للمذكرة: ${genLanguage}
 
-      ${isEasyMode ? `
-[الوضع الذكي السهل]:
-بصفتك خبيراً، استنتج النواقص البيداغوجية (الميدان، المورد، الكفاءة الختامية، مركبات الكفاءة والهدف التعليمي) المناسبة لهذا المستوى والمادة بشكل دقيق جداً حسب المنهاج.
-      ` : ''}
+      [البيانات البيداغوجية]:
+      الميدان/Domain: ${field}
+      المورد (عنوان الدرس): ${topic}
+      النشاط/الأهداف: ${learningObjective || competency}
+      السندات المقترحة: ${materials}
 
-      ${genScope === 'lesson_plan' ? `
-[هيكلية المذكرة المطلوبة - معايير G2]:
-1. الجزء العلوي (ترويسة غنية):
-   - استخدم المصطلحات الدقيقة للمادة: (Projet, Séquence.. للغات) أو (المقطع، الميدان.. للمواد العربية).
-   - المجموعات: الكفاءة الختامية، مركبات الكفاءة، والأهداف العملياتية.
+      [المطلوب تنفيذه بدقة]:
+      1. هيكلية الترويسة (En-tête):
+         استخدم جدول HTML منظماً يضم (المستوى، المادة، المقطع، الميدان، المورد المعرفي، الكفاءة الختامية، الهدف التعلمي، السندات، المدة).
 
-2. مخطط تسيير الحصة (جدول بيداغوجي احترافي شامل):
-   - يجب أن يحتوي الجدول على الأعمدة التالية: [المراحل/Phases, المدة/Duration, سير الحصة (الأنشطة التعليمية التعلمية), التقويم/Assessment].
-   - المراحل الأساسية:
-     * وضعية الانطلاق (Mise en train / Diagnostic).
-     * بناء التعلمات (Situation Problème / Learning phase).
-     * استثمار المكتسبات (Evaluation / Application).
+      2. البطاقة الفنية للدرس:
+         يجب أن تحتوي على:
+         - الكفاءة الختامية (Compétence Terminale).
+         - مركبات الكفاءة (Composantes de la compétence).
+         - القيم والمواقف (Valeurs et attitudes) - وطنية، سلوكية، إلخ.
 
-3. تخصيص حسب المادة:
-   - اللغة العربية (متوسط): ركز على محتوي معرفي، وضعية جزئية، مخرجات.
-   - اللغات (فرنسية/إنجليزية): ركز على Reception (Orale/Ecrite) و Production.
-   - الرياضيات: وضعية مشكلة واقعية، مرحلة البحث، والمنتوج التعلمي.
-   - الاجتماعيات: السندات، التعليمة، والمؤشرات.
-   - الفيزياء/العلوم: الوضعية الانطلاقية (الأم)، السندات، والنتيجة.
-      ` : `
-[هيكلية التقويم المطلوبة]:
-1. ترويسة اختبار رسمية جزائرية.
-2. تمارين متدرجة: ${exerciseCount} تمارين بيداغوجية تتدرج في الصعوبة.
-3. التغطية: ${exercisesDetails.map((ex, i) => `التمرين ${i+1}: المقطع ${ex.section} بكفاءة ${ex.competency}`).join('، ')}.
-4. الوضعية الإدماجية: ${includeIntegralSituation ? `موضوعها: ${integralTopic}` : 'بدون وضعية إدماجية'}.
-5. سلم تنقيط دقيق.
-      `}
+      3. سيرورة التعلمات (Le déroulement):
+         هذا هو الجزء الأهم. يجب أن يكون في جدول HTML عريض جداً (Full Width) بالأعمدة:
+         - المحطات/المراحل (Phases): [وضعية الانطلاق، وضعية مشكلة (بناء التعلمات)، وضعية التدريب/الاستثمار].
+         - الأفعال البيداغوجية (Objectifs intermédiaires): ماذا نريد أن نحقق في كل مرحلة.
+         - الأنشطة التعليمية (Activités d'apprentissage): سيناريو تفصيلي (الأستاذ يطرح، التلاميذ يبحثون، تدوين النتيجة).
+         - التقويم (Évaluation): مؤشرات النجاح.
 
-      [تعليمات إضافية]:
-      - طلب الأستاذ الخاص: ${detailedRequest}
-      - توجيهات إضافية: ${aiPrompt}
+      [تعليمات التصميم البصري]:
+      - استخدم جداول HTML بحدود (border="1" cellspacing="0" cellpadding="10").
+      - اجعل الخلفية للعناوين (Header cells) ملونة بالرمادي الفاتح (#f3f4f6).
+      - النص يجب أن يكون ثرياً بالمصطلحات البيداغوجية (مثلاً: التحسيس، المجابهة، التجريد، الإرساء).
+      - إذا كانت المادة علمية، ركز على التجارب والنتائج. إذا كانت أدبية، ركز على النصوص والتحليل.
 
-      [المخرجات البرمجية (HTML)]:
-      - استخدم HTML5 نظيف بجداول عريضة للغاية (Full Width).
-      - اجعل الجداول واضحة وسهلة القراءة ولا تسمح بالنص العمودي.
-      - اجعل الخطوط كبيرة وواضحة (Header 20px, Text 16px).
-      - المحتوى يجب أن يكون عالي الجودة بيداغوجيا ومطابق تماما للنماذج الجزائرية الحديثة.`;
+      ملاحظة: ${isEasyMode ? 'بما أن الأستاذ في الوضع السهل، قم بصفتك خبيراً بملء كل الثغرات البيداغوجية (الميدان، المقطع، إلخ) بناءً على عنوان الدرس فقط.' : ''}
+      توجيه خاص من الأستاذ: ${detailedRequest} ${aiPrompt}`;
 
       const ai = getAi();
       if (!ai) throw new Error('AI service initialization failed. Missing API key.');
 
       const response = await ai.models.generateContent({
-        model: "gemini-flash-latest",
+        model: "gemini-3.1-pro-preview",
         contents: prompt,
       });
 
@@ -440,7 +420,7 @@ export default function PremiumTools() {
       if (!ai) throw new Error('AI service initialization failed. Missing API key.');
 
       const response = await ai.models.generateContent({
-        model: "gemini-flash-latest",
+        model: "gemini-3.1-pro-preview",
         contents: prompt,
       });
 
@@ -652,13 +632,13 @@ export default function PremiumTools() {
         </motion.div>
       )}
 
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-slate-900 rounded-[40px] p-8 text-white shadow-2xl relative border border-slate-800">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-slate-900 rounded-3xl p-6 text-white shadow-xl relative border border-slate-800">
         <div className="text-right">
-          <p className="text-purple-400 text-sm font-black uppercase tracking-widest mb-1">الأدوات المميزة - Premium Tools</p>
-          <h1 className="text-4xl font-black mb-2 text-white">المؤطر التربوي الذكي</h1>
-          <p className="text-slate-400 font-medium tracking-tight">أدوات احترافية مدعومة بالذكاء الاصطناعي للأستاذ الجزائري.</p>
+          <p className="text-purple-400 text-xs font-black uppercase tracking-widest mb-1">الأدوات المميزة - Premium Tools</p>
+          <h1 className="text-3xl font-black mb-1 text-white">المؤطر التربوي الذكي</h1>
+          <p className="text-slate-400 text-sm font-medium tracking-tight">أدوات بيداغوجية احترافية مدعومة بالذكاء الاصطناعي.</p>
         </div>
-        <div className="flex items-center gap-3 bg-purple-500/10 px-6 py-3 rounded-3xl border border-purple-500/20">
+        <div className="flex items-center gap-3 bg-purple-500/10 px-4 py-2 rounded-2xl border border-purple-500/20">
           <CheckCircle2 className="w-6 h-6 text-purple-500" />
           <div className="text-right">
             <p className="text-[10px] font-black uppercase tracking-tighter text-purple-500/60 leading-none mb-1">اشتراك نشط</p>
@@ -684,14 +664,74 @@ export default function PremiumTools() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <motion.div whileHover={{ y: -5 }} className={cn("p-8 rounded-[40px] border-2 transition-all cursor-pointer group", activeTool === 'generator' ? "bg-slate-900 border-purple-500 shadow-2xl" : "bg-slate-900/50 border-slate-800")} onClick={() => setActiveTool('generator')}>
-          <h2 className="text-2xl font-black text-white mb-2">منصة المؤطر التربوي الشاملة</h2>
-          <p className="text-slate-400 font-medium text-sm mb-6">توليد مذكرات وفروض احترافية حسب المنهاج الجزائري.</p>
+      {/* Pro External Tool Promotion */}
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        whileInView={{ opacity: 1, scale: 1 }}
+        className="bg-gradient-to-br from-amber-600/20 via-slate-900 to-amber-900/20 border-2 border-amber-500/40 p-6 rounded-[32px] relative overflow-hidden group mb-8"
+      >
+        <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-3xl -mr-16 -mt-16 group-hover:bg-amber-500/20 transition-all"></div>
+        <div className="flex flex-col md:flex-row items-center gap-6 relative z-10">
+          <div className="bg-amber-500 p-4 rounded-2xl shadow-lg shadow-amber-500/20">
+            <ExternalLink className="w-8 h-8 text-slate-950" />
+          </div>
+          <div className="text-right flex-1">
+            <h3 className="text-2xl font-black text-white mb-1">Mothakira PRO - المولد الاحترافي</h3>
+            <p className="text-amber-400/80 text-sm font-medium">استخدم المولد الخارجي المخصص للمحترفين للحصول على خيارات بيداغوجية أوسع.</p>
+          </div>
+          <a 
+            href="https://pro-mat-jg9v-5w72r04zr-dalinadjib169-5953s-projects.vercel.app/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="px-8 py-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-2xl shadow-xl shadow-amber-500/10 transition-all flex items-center gap-2 group/btn active:scale-95"
+          >
+            فتح المولد الخارجي
+            <ChevronRight className="w-5 h-5 group-hover:translate-x-[-4px] transition-transform" />
+          </a>
+        </div>
+      </motion.div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <motion.div 
+          whileHover={{ y: -4, scale: 1.01 }} 
+          whileTap={{ scale: 0.98 }}
+          className={cn(
+            "p-6 rounded-3xl border-2 transition-all cursor-pointer group flex flex-col items-center text-center", 
+            activeTool === 'generator' 
+              ? "bg-slate-900 border-purple-500 shadow-[0_0_30px_-10px_rgba(168,85,247,0.3)]" 
+              : "bg-slate-900/50 border-slate-800 hover:border-slate-700"
+          )} 
+          onClick={() => setActiveTool('generator')}
+        >
+          <div className={cn(
+            "w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-colors",
+            activeTool === 'generator' ? "bg-purple-500 text-white" : "bg-slate-800 text-slate-400 group-hover:text-purple-400"
+          )}>
+            <Wand2 className="w-6 h-6" />
+          </div>
+          <h2 className="text-xl font-black text-white mb-2">منصة المؤطر التربوي الشاملة</h2>
+          <p className="text-slate-500 font-medium text-xs">توليد مذكرات وفروض احترافية حسب المنهاج الجزائري.</p>
         </motion.div>
-        <motion.div whileHover={{ y: -5 }} className={cn("p-8 rounded-[40px] border-2 transition-all cursor-pointer group", activeTool === 'corrector' ? "bg-slate-900 border-blue-500 shadow-2xl" : "bg-slate-900/50 border-slate-800")} onClick={() => setActiveTool('corrector')}>
-          <h2 className="text-2xl font-black text-white mb-2">المصحح الذكي</h2>
-          <p className="text-slate-400 font-medium text-sm mb-6">تصحيح الأوراق والوضعيات الإدماجية بدقة عالية.</p>
+
+        <motion.div 
+          whileHover={{ y: -4, scale: 1.01 }} 
+          whileTap={{ scale: 0.98 }}
+          className={cn(
+            "p-6 rounded-3xl border-2 transition-all cursor-pointer group flex flex-col items-center text-center", 
+            activeTool === 'corrector' 
+              ? "bg-slate-900 border-blue-500 shadow-[0_0_30px_-10px_rgba(59,130,246,0.3)]" 
+              : "bg-slate-900/50 border-slate-800 hover:border-slate-700"
+          )} 
+          onClick={() => setActiveTool('corrector')}
+        >
+          <div className={cn(
+            "w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-colors",
+            activeTool === 'corrector' ? "bg-blue-500 text-white" : "bg-slate-800 text-slate-400 group-hover:text-blue-400"
+          )}>
+            <Zap className="w-6 h-6" />
+          </div>
+          <h2 className="text-xl font-black text-white mb-2">المصحح الذكي</h2>
+          <p className="text-slate-500 font-medium text-xs">تصحيح الأوراق والوضعيات الإدماجية بدقة عالية.</p>
         </motion.div>
       </div>
 
@@ -720,7 +760,7 @@ export default function PremiumTools() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="space-y-6">
                 {!isEasyMode ? (
-                  <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-8 space-y-6">
+                  <div className="bg-slate-900 rounded-3xl border border-slate-800 p-6 space-y-6">
                     <div className="grid grid-cols-2 gap-4">
                       <InputField label="الاسم" value={teacherFirstName} onChange={setTeacherFirstName} onSave={() => savePrefs('teacherFirstName', teacherFirstName)} />
                       <InputField label="اللقب" value={teacherLastName} onChange={setTeacherLastName} onSave={() => savePrefs('teacherLastName', teacherLastName)} />
@@ -770,28 +810,28 @@ export default function PremiumTools() {
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-8 space-y-6">
+                  <div className="bg-slate-900 rounded-3xl border border-slate-800 p-6 space-y-6">
                     <SelectField label="المادة" value={subject} onChange={setSubject} options={['اللغة العربية', 'الرياضيات', 'العلوم الطبيعية', 'الفيزياء', 'التاريخ والجغرافيا', 'التربية الإسلامية', 'اللغة الفرنسية', 'اللغة الإنجليزية']} />
                     <SelectField label="المستوى" value={level} onChange={setLevel} options={['1 متوسط', '2 متوسط', '3 متوسط', '4 متوسط', '1 ثانوي', '2 ثانوي', '3 ثانوي']} />
                     <InputField label="المقطع / الدرس" value={topic} onChange={setTopic} placeholder="مثال: القصور الذاتي أو Projet 1 Sec 1..." />
                   </div>
                 )}
                 
-            <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-8 space-y-6">
+            <div className="bg-slate-900 rounded-3xl border border-slate-800 p-6 space-y-6">
               <TextAreaField label="توجيهات إضافية" value={aiPrompt} onChange={setAiPrompt} placeholder="مثلاً: استخدم لغة بسيطة..." />
               <button 
                 onClick={generateContent} 
                 disabled={isGenerating} 
-                className="w-full py-5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black rounded-2xl transition-all flex items-center justify-center gap-3"
+                className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black rounded-xl transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
               >
-                {isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Wand2 className="w-6 h-6" />}
+                {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
                 {isGenerating ? 'جاري التوليد...' : 'توليد الوثيقة'}
               </button>
             </div>
               </div>
 
               <div className="lg:sticky lg:top-8 space-y-6">
-                <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-4">
+                <div className="bg-slate-900 rounded-3xl border border-slate-800 p-4">
                   <div className="flex items-center justify-between px-4 pb-4 border-b border-slate-800">
                     <div className="flex items-center gap-2">
                       <button onClick={exportToPDF} className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white" title="PDF">
@@ -816,15 +856,15 @@ export default function PremiumTools() {
 
         {activeTool === 'corrector' && (
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="space-y-8">
-            <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-8 space-y-6">
+            <div className="bg-slate-900 rounded-3xl border border-slate-800 p-6 space-y-6">
               <TextAreaField label="النص المراد تصحيحه" value={correctText} onChange={setCorrectText} />
-              <button onClick={correctContent} disabled={isCorrecting || !correctText} className="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl flex items-center justify-center gap-3">
-                {isCorrecting ? <Loader2 className="w-6 h-6 animate-spin" /> : <Zap className="w-6 h-6" />}
+              <button onClick={correctContent} disabled={isCorrecting || !correctText} className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl flex items-center justify-center gap-3 active:scale-[0.98]">
+                {isCorrecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
                 بدء التصحيح
               </button>
             </div>
             {correctResult && (
-              <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-8">
+              <div className="bg-slate-900 rounded-3xl border border-slate-800 p-6">
                 <ReactQuill theme="bubble" readOnly value={correctResult} />
               </div>
             )}

@@ -14,8 +14,28 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
+  const [networkStatus, setNetworkStatus] = useState<{ google: boolean | null; firebase: boolean | null }>({ google: null, firebase: null });
 
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    const checkConnectivity = async () => {
+      try {
+        // Test Google Connectivity
+        const googleRes = await fetch('https://apis.google.com/js/api.js', { mode: 'no-cors' }).catch(() => null);
+        // Test Firebase Auth Domain
+        const firebaseRes = await fetch(`https://${auth.app.options.authDomain}/__/__/auth/handler`, { mode: 'no-cors' }).catch(() => null);
+        
+        setNetworkStatus({
+          google: !!googleRes,
+          firebase: !!firebaseRes
+        });
+      } catch (e) {
+        console.error("Connectivity check failed:", e);
+      }
+    };
+    checkConnectivity();
+  }, []);
 
   const handleGoogleLogin = async () => {
     if (loading) return;
@@ -51,15 +71,25 @@ export default function Login() {
       console.log("Google Login successful for user:", result.user.email);
     } catch (err: any) {
       console.error("Google Login Error:", err);
+      const currentDomain = window.location.hostname;
       
       // Handle specific Firebase Auth errors
       if (err.code === 'auth/popup-blocked') {
         setError('Popup blocked! Please allow popups for this site in your browser settings to sign in with Google.');
       } else if (err.code === 'auth/network-request-failed') {
-        setError('خطأ في الاتصال: فشل طلب الشبكة. هذا غالباً بسبب مانع إعلانات (Ad-blocker) أو VPN أو جدار حماية يمنع خدمات جوجل. يرجى تعطيلها والمحاولة مرة أخرى، أو استخدام تسجيل الدخول بالبريد الإلكتروني كبديل.');
+        setError(`خطأ في الاتصال (Network Error): فشل الاتصال بخوادم جوجل.
+          الأسباب المحتملة: 
+          1. مانع إعلانات (Ad-blocker) مفعل. 
+          2. متصفح Brave أو وضع التخفي (Incognito) يمنع الكوكيز. 
+          3. استخدام VPN أو جدار حماية.
+          يرجى محاكاة تسجيل الدخول بالبريد الإلكتروني بدلاً من جوجل إذا استمر المشكلة.`);
+        console.warn("Auth Network Failure diagnostic:", {
+          domain: currentDomain,
+          online: navigator.onLine,
+          userAgent: navigator.userAgent
+        });
       } else if (err.code === 'auth/unauthorized-domain') {
-        const currentDomain = window.location.hostname;
-        setError(`هذا النطاق (${currentDomain}) غير مصرح به. يرجى إضافته إلى Authorized Domains في Firebase Console.`);
+        setError(`هذا النطاق (${currentDomain}) غير مصرح به. يرجى التأكد من إضافة هذا العنوان إلى Authorized Domains في إعدادات Firebase Console.`);
       } else if (err.code === 'auth/cancelled-popup-request' || err.message?.includes('INTERNAL ASSERTION FAILED')) {
         setError('Authentication state error. Please refresh the page and try again.');
         // Force a reload after a short delay if this happens repeatedly
@@ -188,8 +218,32 @@ export default function Login() {
           </div>
 
         {error && (
-          <div className="bg-red-500/10 text-red-500 p-3 rounded-xl mb-6 text-sm font-medium border border-red-500/20">
-            {error}
+          <div className="bg-red-500/10 text-red-500 p-4 rounded-2xl mb-6 text-sm font-medium border border-red-500/20 shadow-lg">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold mb-1">خطأ في تسجيل الدخول</p>
+                <p className="text-xs opacity-90 whitespace-pre-wrap">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {(networkStatus.google === false || networkStatus.firebase === false) && (
+          <div className="bg-amber-500/10 text-amber-500 p-4 rounded-2xl mb-6 text-[10px] font-bold border border-amber-500/20">
+            <p className="mb-2 uppercase tracking-widest text-center">Diagnostics / حالة الاتصال</p>
+            <div className="flex justify-between items-center px-2">
+              <span>Google Services:</span>
+              <span className={networkStatus.google ? 'text-green-500' : 'text-red-500'}>
+                {networkStatus.google ? 'Connected' : 'Blocked (مانع إعلانات؟)'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center px-2 mt-1">
+              <span>Firebase Auth:</span>
+              <span className={networkStatus.firebase ? 'text-green-500' : 'text-red-500'}>
+                {networkStatus.firebase ? 'Connected' : 'Blocked (اتصال ضعيف؟)'}
+              </span>
+            </div>
           </div>
         )}
 
@@ -270,7 +324,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-2xl shadow-lg shadow-purple-500/20 transition-all flex items-center justify-center gap-2 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-black rounded-xl shadow-lg shadow-purple-500/10 transition-all flex items-center justify-center gap-2 ${loading ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98]'}`}
           >
             {loading ? (
               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -284,10 +338,10 @@ export default function Login() {
             <button
               type="button"
               onClick={handleTryForFree}
-              className="w-full py-4 bg-amber-500/10 border border-amber-500/20 text-amber-500 hover:bg-amber-500/20 font-black rounded-2xl transition-all flex items-center justify-center gap-3 group"
+              className="w-full py-3 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/30 text-amber-500 font-bold rounded-xl transition-all flex items-center justify-center gap-2 group active:scale-[0.98]"
             >
-              <Sparkles className="w-5 h-5 group-hover:animate-spin-slow" />
-              جرب مجاناً (3 مرات توليد)
+              <Sparkles className="w-4 h-4 group-hover:animate-pulse" />
+              جرب مجاناً (3 مذكرات)
             </button>
           )}
         </form>
@@ -301,7 +355,7 @@ export default function Login() {
         <button
           onClick={handleGoogleLogin}
           disabled={loading}
-          className={`w-full py-3.5 bg-slate-950 border border-slate-800 hover:bg-slate-900 text-white font-bold rounded-2xl transition-all flex items-center justify-center gap-3 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className={`w-full py-3 bg-slate-950 border border-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-3 ${loading ? 'opacity-50 cursor-not-allowed' : 'active:scale-[0.98]'}`}
         >
           {loading ? (
             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

@@ -40,7 +40,7 @@ export function useAuth() {
           if (docSnap.exists()) {
             const publicData = docSnap.data() as UserProfile;
             setProfile(prev => {
-              const base = prev || {};
+              const base = (prev || {}) as Partial<UserProfile>;
               // Deep merge defaults for reminders and settings for existing users
               const merged = {
                 ...base,
@@ -50,6 +50,7 @@ export function useAuth() {
                   theme: 'dark',
                   fontSize: 'medium',
                   fontType: 'sans',
+                  defaultPostPrivacy: 'public',
                   ...(base.settings || {}),
                   ...(publicData.settings || {})
                 },
@@ -149,7 +150,8 @@ export function useAuth() {
                 language: 'ar',
                 theme: 'dark',
                 fontSize: 'medium',
-                fontType: 'sans'
+                fontType: 'sans',
+                defaultPostPrivacy: 'public'
               },
               reminders: {
                 prayer: false,
