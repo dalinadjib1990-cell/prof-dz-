@@ -15,7 +15,7 @@ export default function Notifications() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile?.uid) return;
 
     const q = query(
       collection(db, 'notifications'),
@@ -64,26 +64,21 @@ export default function Notifications() {
   };
 
   const handleAcceptConnection = async (notification: Notification) => {
-    if (!profile) return;
+    if (!profile?.uid || !notification.senderId) return;
     try {
-      // Find the invitation using a one-time query (getDocs) is allowed for actions, 
-      // but to strictly follow "no manual fetching", we should have a listener or use the notification data if it had the invId.
-      // Since we don't have the invId in the notification, we query it.
-      // To optimize, we'll use a batch for all updates.
-      
       const q = query(
         collection(db, 'invitations'),
-        where('participants', 'array-contains', profile.uid),
-        where('senderId', '==', notification.senderId),
-        where('status', '==', 'pending'),
-        limit(1)
+        where('participants', 'array-contains', profile.uid) // Safe because of check above
       );
       
       const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        const invDoc = snapshot.docs[0];
+      const invDoc = snapshot.docs.find(d => {
+        const data = d.data();
+        return data.senderId === notification.senderId && data.status === 'pending';
+      });
+
+      if (invDoc) {
         const batch = writeBatch(db);
-        
         batch.update(doc(db, 'invitations', invDoc.id), { status: 'accepted' });
         
         // Update both users' followers/following
@@ -105,7 +100,7 @@ export default function Notifications() {
   };
 
   const handleDeclineConnection = async (notification: Notification) => {
-    if (!profile) return;
+    if (!profile?.uid || !notification.senderId) return;
     try {
       const q = query(
         collection(db, 'invitations'),

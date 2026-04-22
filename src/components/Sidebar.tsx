@@ -16,7 +16,7 @@ export default function Sidebar() {
   const [colleagues, setColleagues] = useState<UserProfile[]>([]);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile?.uid) return;
 
     const q = query(
       collection(db, 'notifications'),
@@ -131,35 +131,40 @@ export default function Sidebar() {
           </NavLink>
         ))}
 
-        {/* Premium Shortcuts */}
+        {/* Premium Shortcuts - Consolidated to internal tools to enforce limits */}
         {isPremium && (
           <div className="py-2 space-y-1 mt-4 border-t border-slate-800/50">
             <p className="px-6 py-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">Premium Assistant</p>
-            <a 
-              href="https://pro-mat-psn3.vercel.app/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-4 px-6 py-3 rounded-2xl font-bold text-slate-400 hover:bg-purple-600/10 hover:text-purple-400 transition-all group"
+            <NavLink 
+              to="/premium-tools" 
+              className={({ isActive }) => cn(
+                "flex items-center gap-4 px-6 py-3 rounded-2xl font-bold transition-all group",
+                isActive ? "bg-purple-600/20 text-purple-400" : "text-slate-400 hover:bg-purple-600/10 hover:text-purple-400"
+              )}
             >
               <Wand2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
               <span className="text-sm">مولد المذكرات</span>
-            </a>
-            <Link 
+            </NavLink>
+            <NavLink 
               to="/premium-tools" 
-              className="flex items-center gap-4 px-6 py-3 rounded-2xl font-bold text-slate-400 hover:bg-purple-600/10 hover:text-purple-400 transition-all group"
+              className={({ isActive }) => cn(
+                "flex items-center gap-4 px-6 py-3 rounded-2xl font-bold transition-all group",
+                isActive ? "bg-purple-600/20 text-purple-400" : "text-slate-400 hover:bg-purple-600/10 hover:text-purple-400"
+              )}
             >
               <FileText className="w-4 h-4 group-hover:scale-110 transition-transform" />
               <span className="text-sm">مولد فروض واختبارات</span>
-            </Link>
-            <a 
-              href="https://cour-qi.vercel.app/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-4 px-6 py-3 rounded-2xl font-bold text-slate-400 hover:bg-blue-600/10 hover:text-blue-400 transition-all group"
+            </NavLink>
+            <NavLink 
+              to="/premium-tools" 
+              className={({ isActive }) => cn(
+                "flex items-center gap-4 px-6 py-3 rounded-2xl font-bold transition-all group",
+                isActive ? "bg-purple-600/20 text-purple-400" : "text-slate-400 hover:bg-purple-600/10 hover:text-purple-400"
+              )}
             >
               <CheckSquare className="w-4 h-4 group-hover:scale-110 transition-transform" />
               <span className="text-sm">المصحح الذكي</span>
-            </a>
+            </NavLink>
           </div>
         )}
         

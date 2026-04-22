@@ -8,7 +8,7 @@ export function useUnreadMessages() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    if (!profile) {
+    if (!profile?.uid) {
       setUnreadCount(0);
       return;
     }
@@ -25,11 +25,11 @@ export function useUnreadMessages() {
       const unread = snapshot.docs.filter(doc => doc.data().senderId !== profile.uid);
       setUnreadCount(unread.length);
     }, (error) => {
-      console.error("Error listening to unread messages:", error);
+      console.warn("Error listening to unread messages:", error);
     });
 
     return unsubscribe;
-  }, [profile]);
+  }, [profile?.uid]);
 
   return unreadCount;
 }

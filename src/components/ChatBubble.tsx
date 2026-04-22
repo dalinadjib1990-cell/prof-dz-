@@ -7,6 +7,7 @@ import {
   User, 
   Search, 
   Circle, 
+  Check,
   GraduationCap, 
   Image as ImageIcon, 
   Smile, 
@@ -275,7 +276,7 @@ export default function ChatBubble() {
   }, []);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile?.uid) return;
 
     // Global listener for new unread messages to play sound
     const q = query(
@@ -325,30 +326,33 @@ export default function ChatBubble() {
 
   // Typing Indicator Logic
   useEffect(() => {
-    if (!profile || !activeChat) return;
-    const roomId = activeChat.uid === 'global' ? 'global' : [profile.uid, activeChat.uid].sort().join('_');
+    if (!profile?.uid || !activeChat?.uid) return;
+    const uidA = profile.uid;
+    const uidB = activeChat.uid;
+    const roomId = uidB === 'global' ? 'global' : [uidA, uidB].sort().join('_');
     
     const typingRef = doc(db, 'typing', roomId);
     const unsubscribe = onSnapshot(typingRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (activeChat.uid === 'global') {
-          // In global chat, check if anyone else is typing
-          const othersTyping = Object.entries(data).some(([uid, isTyping]) => uid !== profile.uid && uid !== 'participants' && isTyping);
-          setIsOtherTyping(othersTyping);
-        } else {
-          const otherUserId = activeChat.uid;
-          setIsOtherTyping(!!data[otherUserId] && otherUserId !== 'participants');
-        }
-      } else {
+      if (!docSnap.exists()) {
         setIsOtherTyping(false);
+        return;
+      }
+      
+      const data = docSnap.data() || {};
+      if (uidB === 'global') {
+        // In global chat, check if anyone else is typing
+        const othersTyping = Object.entries(data).some(([u, isTyping]) => u !== uidA && u !== 'participants' && isTyping);
+        setIsOtherTyping(othersTyping);
+      } else {
+        setIsOtherTyping(!!data[uidB] && uidB !== 'participants');
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `typing/${roomId}`);
+      // Silently handle typing errors as they are non-critical
+      console.warn("Typing listener error:", error);
     });
 
     return unsubscribe;
-  }, [profile, activeChat]);
+  }, [profile?.uid, activeChat?.uid]);
 
   useEffect(() => {
     localStorage.setItem('chat_bubble_open', isOpen.toString());
@@ -364,7 +368,7 @@ export default function ChatBubble() {
 
   // Mark messages as seen (VU) - Optimized with writeBatch for real-time performance
   useEffect(() => {
-    if (!profile || !activeChat || !isOpen || activeChat.uid === 'global') return;
+    if (!profile?.uid || !activeChat?.uid || !isOpen || activeChat.uid === 'global') return;
     
     const roomId = [profile.uid, activeChat.uid].sort().join('_');
     const q = query(
@@ -389,11 +393,11 @@ export default function ChatBubble() {
         console.error("Error committing seen batch:", e);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'messages');
+      console.warn("Seen listener error:", error);
     });
 
     return unsubscribeSeen;
-  }, [profile, activeChat, isOpen]);
+  }, [profile?.uid, activeChat?.uid, isOpen]);
 
   const handleTyping = async (isTyping: boolean) => {
     if (!profile || !activeChat) return;
@@ -563,7 +567,7 @@ export default function ChatBubble() {
 
   // Handle Incoming Calls
   useEffect(() => {
-    if (!profile) return;
+    if (!profile?.uid) return;
     const q = query(
       collection(db, 'calls'),
       where('recipientId', '==', profile.uid),
@@ -601,7 +605,7 @@ export default function ChatBubble() {
 
   // Handle Call Status Updates (for the caller)
   useEffect(() => {
-    if (!profile || !isCalling) return;
+    if (!profile?.uid || !isCalling) return;
 
     const q = query(
       collection(db, 'calls'),
@@ -626,16 +630,20 @@ export default function ChatBubble() {
   }, [profile, isCalling, localStream]);
 
   useEffect(() => {
-    if (!profile || !activeChat) {
+    if (!profile?.uid || !activeChat?.uid) {
       setMessages([]);
       return;
     }
 
     const roomId = activeChat.uid === 'global' ? 'global' : [profile.uid, activeChat.uid].sort().join('_');
+    const participantsValue = activeChat.uid === 'global' ? 'global' : profile.uid;
+    
+    if (!participantsValue) return;
+
     const q = query(
       collection(db, 'messages'),
       where('roomId', '==', roomId),
-      where('participants', 'array-contains', activeChat.uid === 'global' ? 'global' : profile.uid),
+      where('participants', 'array-contains', participantsValue),
       orderBy('clientCreatedAt', 'desc'),
       limit(100)
     );
@@ -675,7 +683,7 @@ export default function ChatBubble() {
 
   // Real-time users status listener
   useEffect(() => {
-    if (!profile) return;
+    if (!profile?.uid) return;
 
     const q = query(collection(db, 'users'), limit(100));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -696,7 +704,7 @@ export default function ChatBubble() {
     });
 
     return unsubscribe;
-  }, [profile]);
+  }, [profile?.uid]);
 
   useEffect(() => {
     const handleOpenChat = (e: any) => {
@@ -1390,9 +1398,16 @@ export default function ChatBubble() {
                             {msg.createdAt?.toDate ? formatDistanceToNow(msg.createdAt.toDate(), { addSuffix: true }) : 'Just now'}
                           </p>
                           {msg.senderId === profile.uid && (
-                            <span className={`text-[9px] font-black uppercase tracking-widest ${msg.seen ? 'text-purple-400' : 'text-white/40'}`}>
-                              {msg.seen ? 'VU' : 'Envoyé'}
-                            </span>
+                            <div className="flex items-center">
+                              {msg.seen ? (
+                                <div className="flex -space-x-1">
+                                  <Check className="w-3 h-3 text-purple-300" strokeWidth={4} />
+                                  <Check className="w-3 h-3 text-purple-300" strokeWidth={4} />
+                                </div>
+                              ) : (
+                                <Check className="w-3 h-3 text-white/40" strokeWidth={4} />
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>

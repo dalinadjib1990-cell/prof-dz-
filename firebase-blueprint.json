@@ -32,9 +32,24 @@
         "bioTextColor": { "type": "string" },
         "premiumUntil": { "type": "string", "format": "date-time" },
         "isActivated": { "type": "boolean" },
+        "lastGenerationDate": { "type": "string", "format": "date-time" },
+        "lastUsageResetDate": { "type": "string", "format": "date-time" },
+        "dailyGenCount": { "type": "number" },
+        "dailyCorrectCount": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "displayName", "photoURL", "createdAt"]
+    },
+    "ActivationCode": {
+      "title": "Activation Code",
+      "description": "Subscription activation code",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["code", "createdAt"]
     },
     "UserPrivateData": {
       "title": "UserPrivateData",
@@ -241,6 +256,10 @@
     "/calls/{callId}": {
       "schema": "Call",
       "description": "Call records"
+    },
+    "/activation_codes/{codeId}": {
+      "schema": "ActivationCode",
+      "description": "Subscription activation codes"
     },
     "/_connection_test_/{docId}": {
       "schema": { "type": "object", "properties": { "test": { "type": "string" } } },

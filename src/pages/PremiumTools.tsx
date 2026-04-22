@@ -1,13 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { Wand2, CheckSquare, Lock, Key, Mail, Phone, Sparkles, Send, Loader2, FileText, ClipboardCheck, AlertCircle, CheckCircle2, Zap, ExternalLink, BookOpen, Plus } from 'lucide-react';
+import { Wand2, CheckSquare, Lock, Key, Mail, Phone, Sparkles, Send, Loader2, FileText, ClipboardCheck, AlertCircle, CheckCircle2, Zap, ExternalLink, BookOpen, Plus, Save, Download, Printer, Maximize2, Minimize2, ZoomIn, ZoomOut, Type, Bold, Italic, List, AlignLeft, AlignCenter, AlignRight, Underline, Layout, Grid, Target, GraduationCap, User, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../firebase';
 import { doc, updateDoc, Timestamp, collection, getDocs, query, where, deleteDoc, serverTimestamp, orderBy, onSnapshot, addDoc } from 'firebase/firestore';
 import { GoogleGenAI } from "@google/genai";
-import ReactMarkdown from 'react-markdown';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
+import html2pdf from 'html2pdf.js';
+import { saveAs } from 'file-saver';
+import { Document, Packer, Paragraph, TextRun, AlignmentType } from 'docx';
+
+import { UserProfile, SavedPreferences } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+function cn(...classes: (string | boolean | undefined)[]) {
+  return classes.filter(Boolean).join(' ');
+}
 
 export default function PremiumTools() {
   const { profile } = useAuth();
@@ -16,18 +26,103 @@ export default function PremiumTools() {
   const [isActivating, setIsActivating] = useState(false);
   const [activationError, setActivationError] = useState<string | null>(null);
   
+  // Persistence State
+  const [isEasyMode, setIsEasyMode] = useState(false);
+
+  // Teacher Info
+  const [teacherFirstName, setTeacherFirstName] = useState('');
+  const [teacherLastName, setTeacherLastName] = useState('');
+  const [phase, setPhase] = useState('');
+  const [subject, setSubject] = useState('');
+  const [school, setSchool] = useState('');
+  const [level, setLevel] = useState('');
+
   // Generator State
   const [genScope, setGenScope] = useState<'lesson_plan' | 'assignment' | 'exam'>('lesson_plan');
-  const [genSubject, setGenSubject] = useState(profile?.subject || '');
-  const [genLevel, setGenLevel] = useState(profile?.level || '');
-  const [genTopic, setGenTopic] = useState('');
+  const [sectionNum, setSectionNum] = useState(''); // المقطع
+  const [field, setField] = useState(''); // الميدان
+  const [topic, setTopic] = useState(''); // المورد
+  const [projectNum, setProjectNum] = useState(''); // Projet
+  const [sequenceNum, setSequenceNum] = useState(''); // Séquence
+  const [tache, setTache] = useState(''); // Tâche
+  const [activity, setActivity] = useState(''); // Activité / النشاط
+  const [learningObjective, setLearningObjective] = useState(''); // الهدف التعلمي
+  const [materials, setMaterials] = useState(''); // السندات
+  const [genLanguage, setGenLanguage] = useState('ar'); // ar, fr, en
+  
+  const [style, setStyle] = useState('احترافي'); // كلاسيكي، مميز، احترافي...
+  const [template, setTemplate] = useState('عملي'); // عملي، بسيط، هادف...
+  const [competency, setCompetency] = useState(''); // الكفاءة المستهدفة
+  const [detailedRequest, setDetailedRequest] = useState(''); // ما يريده الأستاذ بالضبط
+  const [aiPrompt, setAiPrompt] = useState(''); // حقل عام للذكاء الاصطناعي
+  
+  // Assignment Specifics
+  const [testNumber, setTestNumber] = useState('1');
+  const [exerciseCount, setExerciseCount] = useState('3');
+  const [includeIntegralSituation, setIncludeIntegralSituation] = useState(false);
+  const [integralTopic, setIntegralTopic] = useState('');
+  
+  // Dynamic fields based on subject
+  const getFieldsForSubject = (subj: string) => {
+    switch(subj) {
+      case 'الرياضيات': return ['أنشطة عددية', 'أنشطة هندسية', 'تنظيم معطيات'];
+      case 'التاريخ والجغرافيا': return ['التاريخ الوطني', 'التاريخ العام', 'المجال الجغرافي', 'السكان والتنمية'];
+      case 'اللغة العربية': return ['فهم المنطوق', 'تعبير شفوي', 'قراءة', 'ظواهر لغوية', 'تعبير كتابي'];
+      case 'التربية الإسلامية': return ['القرآن الكريم والحديث', 'العقيدة الإسلامية', 'العبادات', 'السيرة النبوية', 'الآداب والأخلاق'];
+      default: return ['عام', 'نظري', 'تطبيقي'];
+    }
+  };
+
+  const [exercisesDetails, setExercisesDetails] = useState<{section: string, competency: string}[]>([
+    { section: '', competency: '' },
+    { section: '', competency: '' },
+    { section: '', competency: '' },
+  ]);
+
   const [genResult, setGenResult] = useState('');
+  const [genError, setGenError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [zoom, setZoom] = useState(80);
 
   // Corrector State
   const [correctText, setCorrectText] = useState('');
   const [correctResult, setCorrectResult] = useState('');
   const [isCorrecting, setIsCorrecting] = useState(false);
+
+  // Sync preferences when profile loads
+  useEffect(() => {
+    if (profile?.savedPreferences) {
+      const prefs = profile.savedPreferences;
+      if (prefs.isEasyMode !== undefined) setIsEasyMode(prefs.isEasyMode);
+      if (prefs.teacherFirstName) setTeacherFirstName(prefs.teacherFirstName);
+      if (prefs.teacherLastName) setTeacherLastName(prefs.teacherLastName);
+      if (prefs.phase) setPhase(prefs.phase);
+      if (prefs.subject) setSubject(prefs.subject);
+      if (prefs.school) setSchool(prefs.school);
+      if (prefs.level) setLevel(prefs.level);
+      if (prefs.sectionNum) setSectionNum(prefs.sectionNum);
+      if (prefs.field) setField(prefs.field);
+      if (prefs.topic) setTopic(prefs.topic);
+      if (prefs.projectNum) setProjectNum(prefs.projectNum);
+      if (prefs.sequenceNum) setSequenceNum(prefs.sequenceNum);
+      if (prefs.tache) setTache(prefs.tache);
+      if (prefs.activity) setActivity(prefs.activity);
+      if (prefs.learningObjective) setLearningObjective(prefs.learningObjective);
+      if (prefs.competency) setCompetency(prefs.competency);
+      if (prefs.materials) setMaterials(prefs.materials);
+      if (prefs.genLanguage) setGenLanguage(prefs.genLanguage);
+
+      // Auto set language based on subject
+      if (prefs.subject === 'اللغة الفرنسية') setGenLanguage('fr');
+      else if (prefs.subject === 'اللغة الإنجليزية') setGenLanguage('en');
+    }
+  }, [profile]);
+
+  useEffect(() => {
+    if (subject === 'اللغة الفرنسية') setGenLanguage('fr');
+    else if (subject === 'اللغة الإنجليزية') setGenLanguage('en');
+    else setGenLanguage('ar');
+  }, [subject]);
 
   const isAdmin = profile?.email === 'dalinadjib1990@gmail.com';
   const isPremium = isAdmin || (profile?.premiumUntil ? profile.premiumUntil.toDate() > new Date() : false);
@@ -63,7 +158,6 @@ export default function PremiumTools() {
 
     const updates: any = {
       lastUsageResetDate: serverTimestamp(),
-      lastGenerationDate: serverTimestamp() // Keeping legacy for compatibility
     };
 
     if (isNewDay) {
@@ -87,7 +181,6 @@ export default function PremiumTools() {
   const [adminCodes, setAdminCodes] = useState<any[]>([]);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
 
-  // Load codes for admin
   useEffect(() => {
     if (isAdmin) {
       const q = query(collection(db, 'activation_codes'), orderBy('createdAt', 'desc'));
@@ -119,13 +212,11 @@ export default function PremiumTools() {
     setIsActivating(true);
     setActivationError(null);
     try {
-      // For the sake of this implementation, we check a collection 'activation_codes'
       const codesRef = collection(db, 'activation_codes');
       const q = query(codesRef, where('code', '==', activationCode.trim()));
       const snap = await getDocs(q);
 
       if (snap.empty) {
-        // Fallback for demonstration: DALI-2026
         if (activationCode.trim() === 'DALI-2026') {
           const expiryDate = new Date();
           expiryDate.setFullYear(expiryDate.getFullYear() + 1);
@@ -145,14 +236,13 @@ export default function PremiumTools() {
 
       const codeDoc = snap.docs[0];
       const expiryDate = new Date();
-      expiryDate.setFullYear(expiryDate.getFullYear() + 1); // 1 year
+      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
 
       await updateDoc(doc(db, 'users', profile.uid), {
         premiumUntil: Timestamp.fromDate(expiryDate),
         isActivated: true
       });
 
-      // Delete the used code
       await deleteDoc(codeDoc.ref);
       
       setActivationCode('');
@@ -164,37 +254,126 @@ export default function PremiumTools() {
     }
   };
 
+  const exportToPDF = () => {
+    const element = document.querySelector('.ql-editor') as HTMLElement;
+    if (!element) return;
+    const opt = {
+      margin: 10,
+      filename: `${genScope}_${topic || 'document'}.pdf`,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+    };
+    html2pdf().from(element).set(opt).save();
+  };
+
+  const exportToWord = () => {
+    const element = document.querySelector('.ql-editor') as HTMLElement;
+    const text = element?.innerText || '';
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: text.split('\n').map(line => new Paragraph({
+          alignment: AlignmentType.RIGHT,
+          children: [new TextRun(line)],
+        })),
+      }],
+    });
+
+    Packer.toBlob(doc).then(blob => {
+      saveAs(blob, `${genScope}_${topic || 'document'}.docx`);
+    });
+  };
+
   const generateContent = async () => {
+    if (!profile) return;
     if (!canGenerate('gen')) {
-      alert('لقد استنفدت حد التوليد اليومي (وثيقة واحدة في اليوم).');
+      alert('لقد استنفدت حد التوليد اليومي (وثيقة واحدة في اليوم). يمكنك المحاولة مرة أخرى غداً.');
       return;
     }
 
+    setGenError(null);
     setIsGenerating(true);
     try {
-      const prompt = `You are an expert Algerian teacher. Generate a high-quality ${genScope.replace('_', ' ')} for the subject "${genSubject}" and level "${genLevel}".
-      Topic: ${genTopic}
-      Language: ${profile?.settings?.language === 'ar' ? 'Arabic' : 'French/English as appropriate for the subject'}
-      Structure: Professional and ready-to-use.
-      Include: Learning objectives, detailed content, and assessment questions.`;
+      await updateUsage('gen');
+
+      let prompt = `أنت خبير تربوي جزائري رائد، متخصص في المنهاج الوطني الجزائري (G2) للجيل الثاني.
+      مهمتك هي صياغة ${genScope === 'lesson_plan' ? 'مذكرة بيداغوجية احترافية' : 'تقويم رسمي'} يطابق النماذج المعتمدة لوزارة التربية الوطنية.
+      
+      [المعلومات العامة]:
+      - الأستاذ: ${teacherFirstName} ${teacherLastName} | المؤسسة: ${school}
+      - الطور: ${phase} | المستوى: ${level} | المادة: ${subject}
+      - اللغة المطلوبة للتوليد: ${genLanguage} (ar=Arabic, fr=French, en=English)
+
+      [البيانات البيداغوجية المتوفرة]:
+      - رقم المقطع/Sequence: ${sequenceNum || sectionNum}
+      - المشروع/Projet: ${projectNum}
+      - الميدان/Domain: ${field}
+      - المورد/Topic: ${topic}
+      - المهمة/Task: ${tache}
+      - النشاط/Activity: ${activity}
+      - الهدف التعلمي/Objective: ${learningObjective || competency}
+      - السندات/Materials: ${materials}
+
+      ${isEasyMode ? `
+[الوضع الذكي السهل]:
+بصفتك خبيراً، استنتج النواقص البيداغوجية (الميدان، المورد، الكفاءة الختامية، مركبات الكفاءة والهدف التعليمي) المناسبة لهذا المستوى والمادة بشكل دقيق جداً حسب المنهاج.
+      ` : ''}
+
+      ${genScope === 'lesson_plan' ? `
+[هيكلية المذكرة المطلوبة - معايير G2]:
+1. الجزء العلوي (ترويسة غنية):
+   - استخدم المصطلحات الدقيقة للمادة: (Projet, Séquence.. للغات) أو (المقطع، الميدان.. للمواد العربية).
+   - المجموعات: الكفاءة الختامية، مركبات الكفاءة، والأهداف العملياتية.
+
+2. مخطط تسيير الحصة (جدول بيداغوجي احترافي شامل):
+   - يجب أن يحتوي الجدول على الأعمدة التالية: [المراحل/Phases, المدة/Duration, سير الحصة (الأنشطة التعليمية التعلمية), التقويم/Assessment].
+   - المراحل الأساسية:
+     * وضعية الانطلاق (Mise en train / Diagnostic).
+     * بناء التعلمات (Situation Problème / Learning phase).
+     * استثمار المكتسبات (Evaluation / Application).
+
+3. تخصيص حسب المادة:
+   - اللغة العربية (متوسط): ركز على محتوي معرفي، وضعية جزئية، مخرجات.
+   - اللغات (فرنسية/إنجليزية): ركز على Reception (Orale/Ecrite) و Production.
+   - الرياضيات: وضعية مشكلة واقعية، مرحلة البحث، والمنتوج التعلمي.
+   - الاجتماعيات: السندات، التعليمة، والمؤشرات.
+   - الفيزياء/العلوم: الوضعية الانطلاقية (الأم)، السندات، والنتيجة.
+      ` : `
+[هيكلية التقويم المطلوبة]:
+1. ترويسة اختبار رسمية جزائرية.
+2. تمارين متدرجة: ${exerciseCount} تمارين بيداغوجية تتدرج في الصعوبة.
+3. التغطية: ${exercisesDetails.map((ex, i) => `التمرين ${i+1}: المقطع ${ex.section} بكفاءة ${ex.competency}`).join('، ')}.
+4. الوضعية الإدماجية: ${includeIntegralSituation ? `موضوعها: ${integralTopic}` : 'بدون وضعية إدماجية'}.
+5. سلم تنقيط دقيق.
+      `}
+
+      [تعليمات إضافية]:
+      - طلب الأستاذ الخاص: ${detailedRequest}
+      - توجيهات إضافية: ${aiPrompt}
+
+      [المخرجات البرمجية (HTML)]:
+      - استخدم HTML5 نظيف بجداول عريضة للغاية (Full Width).
+      - اجعل الجداول واضحة وسهلة القراءة ولا تسمح بالنص العمودي.
+      - اجعل الخطوط كبيرة وواضحة (Header 20px, Text 16px).
+      - المحتوى يجب أن يكون عالي الجودة بيداغوجياً ومطابق تماماً للنماذج الجزائرية الحديثة.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-flash-latest",
         contents: prompt,
       });
 
-      setGenResult(response.text || 'No generation result.');
-      
-      await updateUsage('gen');
-    } catch (err) {
+      setGenResult(response.text || 'لم يتم توليد أي محتوى.');
+    } catch (err: any) {
       console.error(err);
-      alert('Generation failed.');
+      setGenError(err.message || 'فشل توليد المحتوى. يرجى المحاولة لاحقاً.');
     } finally {
       setIsGenerating(false);
     }
   };
 
   const correctContent = async () => {
+    if (!profile) return;
     if (!canGenerate('correct')) {
       alert('لقد استنفدت حد التصحيح اليومي (10 تصحيحات في اليوم).');
       return;
@@ -202,49 +381,82 @@ export default function PremiumTools() {
 
     setIsCorrecting(true);
     try {
+      await updateUsage('correct');
+
       const prompt = `You are an expert educational corrector. Analyze the following student response or teacher content for subject "${profile?.subject}". 
       Content: ${correctText}
       Task: Provide a detailed correction, grade (out of 20), and constructive feedback.
       Language: Arabic`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-flash-latest",
         contents: prompt,
       });
 
       setCorrectResult(response.text || 'No correction result.');
-
-      await updateUsage('correct');
     } catch (err) {
       console.error(err);
-      alert('Correction failed.');
+      alert('فشلت عملية التصحيح.');
     } finally {
       setIsCorrecting(false);
     }
+  };
+
+  const savePrefs = async (key: keyof SavedPreferences, value: any) => {
+    if (!profile) return;
+    const currentPrefs = profile.savedPreferences || {};
+    await updateDoc(doc(db, 'users', profile.uid), {
+      savedPreferences: {
+        ...currentPrefs,
+        [key]: value
+      }
+    });
+  };
+
+  const saveAllPrefs = async () => {
+    if (!profile) return;
+    await updateDoc(doc(db, 'users', profile.uid), {
+      savedPreferences: {
+        teacherFirstName,
+        teacherLastName,
+        phase,
+        subject,
+        school,
+        level,
+        isEasyMode,
+        sectionNum,
+        field,
+        topic,
+        projectNum,
+        sequenceNum,
+        tache,
+        activity,
+        learningObjective,
+        competency,
+        materials,
+        genLanguage
+      }
+    });
+    alert('تم حفظ جميع الإعدادات كمفضلة!');
   };
 
   if (!isPremium) {
     return (
       <div className="min-h-[80vh] flex flex-col items-center justify-center p-8 text-center bg-slate-950 rounded-[40px] border border-slate-900 border-dashed relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-600/5 to-blue-600/5 pointer-events-none"></div>
-        
         <div className="bg-purple-600/20 p-6 rounded-[32px] mb-8 relative">
-          <div className="absolute inset-0 bg-purple-500 blur-2xl opacity-20 animate-pulse"></div>
           <Lock className="w-16 h-16 text-purple-500 relative z-10" />
         </div>
-
         <h1 className="text-4xl font-black text-white mb-4">Premium AI Tools</h1>
         <p className="text-slate-400 max-w-lg mb-8 text-lg font-medium">
           Access our powerful AI generators for lesson plans, tests, and automated grading. 
           A yearly subscription is required to unlock these professional features.
         </p>
-
         <div className="w-full max-w-md bg-slate-900 rounded-[32px] p-8 border border-slate-800 shadow-2xl relative z-10">
           <h2 className="text-xl font-black text-white mb-6 flex items-center justify-center gap-2">
             <Key className="w-5 h-5 text-purple-500" />
             أدخل كود التفعيل
           </h2>
-          
           <div className="space-y-4">
             <input 
               type="text" 
@@ -253,14 +465,12 @@ export default function PremiumTools() {
               value={activationCode}
               onChange={(e) => setActivationCode(e.target.value)}
             />
-            
             {activationError && (
               <div className="flex items-center gap-2 text-red-400 text-sm font-bold bg-red-400/10 p-3 rounded-xl border border-red-400/20">
                 <AlertCircle className="w-4 h-4" />
                 {activationError}
               </div>
             )}
-
             <button 
               onClick={handleActivate}
               disabled={isActivating || !activationCode}
@@ -270,20 +480,18 @@ export default function PremiumTools() {
               تفعيل الاشتراك السنوي
             </button>
           </div>
-
-          <div className="mt-8 pt-8 border-t border-slate-800 space-y-4">
-            <p className="text-slate-500 text-xs font-black uppercase tracking-widest text-center">للحصول على كود التفعيل، اتصل بالمسؤول</p>
+          <div className="mt-8 pt-8 border-t border-slate-800 space-y-4 text-center">
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">للحصول على كود التفعيل، اتصل بالمسؤول</p>
             <div className="flex flex-col gap-3">
               <a href="tel:0673831994" className="flex items-center gap-3 text-slate-300 hover:text-purple-400 transition-colors bg-slate-950 p-4 rounded-xl border border-slate-800 group">
-                <Phone className="w-5 h-5 group-hover:scale-110 transition-transform text-purple-500" />
+                <Phone className="w-5 h-5 text-purple-500" />
                 <span className="font-bold text-sm">0673831994</span>
               </a>
               <a href="mailto:dalinadjib1990@gmail.com" className="flex items-center gap-3 text-slate-300 hover:text-purple-400 transition-colors bg-slate-950 p-4 rounded-xl border border-slate-800 group">
-                <Mail className="w-5 h-5 group-hover:scale-110 transition-transform text-purple-500" />
+                <Mail className="w-5 h-5 text-purple-500" />
                 <span className="font-bold text-sm">dalinadjib1990@gmail.com</span>
               </a>
             </div>
-            <p className="text-[10px] text-slate-600 font-bold text-center">الاشتراك صالح لمدة عام كامل • توليد واحد يومياً</p>
           </div>
         </div>
       </div>
@@ -291,16 +499,10 @@ export default function PremiumTools() {
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* Admin Panel Button */}
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20" dir="rtl">
       {isAdmin && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="bg-slate-900 border border-purple-500/30 p-6 rounded-[32px] overflow-hidden relative shadow-2xl shadow-purple-500/10"
-        >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
-          <div className="flex items-center justify-between gap-4 relative z-10">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-slate-900 border border-purple-500/30 p-6 rounded-[32px] relative shadow-2xl">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <h3 className="text-xl font-black text-white flex items-center gap-2">
                 <Lock className="w-5 h-5 text-purple-500" />
@@ -308,46 +510,26 @@ export default function PremiumTools() {
               </h3>
               <p className="text-slate-400 text-xs font-medium">توليد وإدارة أكواد تفعيل المشتركين</p>
             </div>
-            <button 
-              onClick={() => setIsAdminPanelOpen(!isAdminPanelOpen)}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg shadow-purple-500/20"
-            >
+            <button onClick={() => setIsAdminPanelOpen(!isAdminPanelOpen)} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-2xl font-black text-sm">
               {isAdminPanelOpen ? 'إغلاق اللوحة' : 'فتح لوحة الأكواد'}
             </button>
           </div>
-
           <AnimatePresence>
             {isAdminPanelOpen && (
-              <motion.div 
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="mt-6 pt-6 border-t border-slate-800 space-y-4 overflow-hidden"
-              >
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="mt-6 pt-6 border-t border-slate-800 space-y-4 overflow-hidden">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400 text-sm font-bold">الأكواد المتوفرة ({adminCodes.length})</span>
-                  <button 
-                    onClick={generateNewCode}
-                    className="flex items-center gap-2 text-xs font-black bg-emerald-500/10 text-emerald-500 px-4 py-2 rounded-xl border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-all shadow-lg shadow-emerald-500/10"
-                  >
+                  <button onClick={generateNewCode} className="flex items-center gap-2 text-xs font-black bg-emerald-500/10 text-emerald-500 px-4 py-2 rounded-xl border border-emerald-500/20">
                     <Plus className="w-4 h-4" />
                     توليد كود جديد
                   </button>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
-                  {adminCodes.length === 0 ? (
-                    <p className="text-slate-500 text-center py-8 text-xs font-bold col-span-full">لا يوجد أكواد نشطة حالياً</p>
-                  ) : (
-                    adminCodes.map((c) => (
-                      <div key={c.id} className="bg-slate-950 border border-slate-800 p-4 rounded-2xl group hover:border-purple-500/50 transition-all flex flex-col gap-1">
-                        <span className="text-lg font-mono font-black text-white select-all">{c.code}</span>
-                        <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">
-                          {c.createdAt?.toDate().toLocaleString('ar-DZ')}
-                        </span>
-                      </div>
-                    ))
-                  )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-64 overflow-y-auto">
+                  {adminCodes.map((c) => (
+                    <div key={c.id} className="bg-slate-950 border border-slate-800 p-4 rounded-2xl flex flex-col gap-1">
+                      <span className="text-lg font-mono font-black text-white">{c.code}</span>
+                    </div>
+                  ))}
                 </div>
               </motion.div>
             )}
@@ -355,306 +537,178 @@ export default function PremiumTools() {
         </motion.div>
       )}
 
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-slate-900 rounded-[40px] p-8 text-white shadow-2xl relative overflow-hidden border border-slate-800">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-purple-600/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-        <div className="relative z-10">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-slate-900 rounded-[40px] p-8 text-white shadow-2xl relative border border-slate-800">
+        <div className="text-right">
           <p className="text-purple-400 text-sm font-black uppercase tracking-widest mb-1">الأدوات المميزة - Premium Tools</p>
           <h1 className="text-4xl font-black mb-2 text-white">المؤطر التربوي الذكي</h1>
-          <p className="text-slate-400 font-medium">أدوات احترافية مدعومة بالذكاء الاصطناعي للأستاذ الجزائري.</p>
+          <p className="text-slate-400 font-medium tracking-tight">أدوات احترافية مدعومة بالذكاء الاصطناعي للأستاذ الجزائري.</p>
         </div>
-        <div className="flex items-center gap-3 bg-purple-500/10 backdrop-blur-md px-6 py-3 rounded-3xl border border-purple-500/20 relative z-10">
+        <div className="flex items-center gap-3 bg-purple-500/10 px-6 py-3 rounded-3xl border border-purple-500/20">
           <CheckCircle2 className="w-6 h-6 text-purple-500" />
-          <div className="text-left">
-            <p className="text-[10px] font-black uppercase tracking-tighter text-purple-500/60 leading-none">اشتراك نشط</p>
-            <p className="text-sm font-black text-white">حتى {profile.premiumUntil?.toDate().toLocaleDateString()}</p>
+          <div className="text-right">
+            <p className="text-[10px] font-black uppercase tracking-tighter text-purple-500/60 leading-none mb-1">اشتراك نشط</p>
+            <p className="text-sm font-black text-white">حتى {profile?.premiumUntil?.toDate().toLocaleDateString()}</p>
           </div>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <a 
-          href="https://cour-qi.vercel.app/" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="p-8 rounded-[40px] border-2 border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 hover:border-amber-500 transition-all group relative overflow-hidden flex flex-col items-center text-center"
-        >
-          <div className="bg-amber-500 p-4 rounded-2xl mb-4 shadow-lg shadow-amber-500/30 group-hover:scale-110 transition-transform">
-            <Zap className="w-8 h-8 text-white" />
-          </div>
-          <h2 className="text-xl font-black text-white mb-2">التطبيق المصحح المعتمد</h2>
-          <p className="text-amber-200/60 text-xs font-medium">افتح تطبيق التصحيح التلقائي المعتمد والمصحح تربوياً</p>
-          <div className="mt-4 flex items-center gap-2 text-amber-500 font-black text-[10px] uppercase tracking-widest">
-            <span>فتح التطبيق الآن</span>
-            <ExternalLink className="w-3 h-3" />
-          </div>
-        </a>
-
-        <a 
-          href="https://pro-mat-psn3.vercel.app/" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="p-8 rounded-[40px] border-2 border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500 transition-all group relative overflow-hidden flex flex-col items-center text-center"
-        >
-          <div className="bg-emerald-500 p-4 rounded-2xl mb-4 shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform">
-            <BookOpen className="w-8 h-8 text-white" />
-          </div>
-          <h2 className="text-xl font-black text-white mb-2">مولد المذكرات الشامل</h2>
-          <p className="text-emerald-200/60 text-xs font-medium">بناء المذكرات والملفات التعليمية والدروس النموذجية</p>
-          <div className="mt-4 flex items-center gap-2 text-emerald-500 font-black text-[10px] uppercase tracking-widest">
-            <span>فتح المولد الآن</span>
-            <ExternalLink className="w-3 h-3" />
-          </div>
-        </a>
       </div>
 
       {!isAdmin && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          <div className={`p-4 rounded-2xl flex items-center gap-3 border ${getRemainingAttempts('gen') === 0 ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}>
-            <AlertCircle className="w-5 h-5" />
-            <p className="text-xs font-bold">توليد وثائق: {getRemainingAttempts('gen')} محاولة متبقية اليوم</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className={`p-4 rounded-2xl flex items-center justify-between border ${getRemainingAttempts('gen') === 0 ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}>
+            <div className="flex items-center gap-3">
+              <Zap className="w-5 h-5" />
+              <p className="text-xs font-black">توليد مذكرات: {getRemainingAttempts('gen')} متبقية</p>
+            </div>
           </div>
-          <div className={`p-4 rounded-2xl flex items-center gap-3 border ${getRemainingAttempts('correct') === 0 ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}>
-            <ClipboardCheck className="w-5 h-5" />
-            <p className="text-xs font-bold">تصحيح أوراق: {getRemainingAttempts('correct')} محاولات متبقية اليوم</p>
+          <div className={`p-4 rounded-2xl flex items-center justify-between border ${getRemainingAttempts('correct') === 0 ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-blue-500/10 border-blue-500/20 text-blue-400'}`}>
+            <div className="flex items-center gap-3">
+              <ClipboardCheck className="w-5 h-5" />
+              <p className="text-xs font-black">تصحيح أوراق: {getRemainingAttempts('correct')} متبقية</p>
+            </div>
           </div>
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Tool 1: Generator */}
-        <motion.div 
-          whileHover={{ y: -5 }}
-          className={cn(
-            "p-8 rounded-[40px] border-2 transition-all cursor-pointer group relative overflow-hidden",
-            activeTool === 'generator' ? "bg-slate-900 border-purple-500 shadow-2xl shadow-purple-500/10" : "bg-slate-900/50 border-slate-800 hover:border-slate-700"
-          )}
-          onClick={() => setActiveTool('generator')}
-        >
-          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-            <FileText className="w-32 h-32" />
-          </div>
-          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors ${activeTool === 'generator' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-500 group-hover:bg-slate-700'}`}>
-            <FileText className="w-8 h-8" />
-          </div>
-          <h2 className="text-2xl font-black text-white mb-2">مولد الفروض والاختبارات</h2>
-          <p className="text-slate-400 font-medium text-sm leading-relaxed mb-6">
-            قم بتوليد فروض ومذكرات واختبارات نموذجية حسب المنهاج الجزائري بضغطة زر.
-          </p>
-          <div className="flex items-center gap-2 text-purple-400 font-black text-xs uppercase tracking-widest">
-            <span>استخدام الأداة</span>
-            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </div>
+        <motion.div whileHover={{ y: -5 }} className={cn("p-8 rounded-[40px] border-2 transition-all cursor-pointer group", activeTool === 'generator' ? "bg-slate-900 border-purple-500 shadow-2xl" : "bg-slate-900/50 border-slate-800")} onClick={() => setActiveTool('generator')}>
+          <h2 className="text-2xl font-black text-white mb-2">منصة المؤطر التربوي الشاملة</h2>
+          <p className="text-slate-400 font-medium text-sm mb-6">توليد مذكرات وفروض احترافية حسب المنهاج الجزائري.</p>
         </motion.div>
-
-        {/* Tool 2: Corrector */}
-        <motion.div 
-          whileHover={{ y: -5 }}
-          className={cn(
-            "p-8 rounded-[40px] border-2 transition-all cursor-pointer group relative overflow-hidden",
-            activeTool === 'corrector' ? "bg-slate-900 border-blue-500 shadow-2xl shadow-blue-500/10" : "bg-slate-900/50 border-slate-800 hover:border-slate-700"
-          )}
-          onClick={() => setActiveTool('corrector')}
-        >
-          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-            <CheckSquare className="w-32 h-32" />
-          </div>
-          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors ${activeTool === 'corrector' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500 group-hover:bg-slate-700'}`}>
-            <ClipboardCheck className="w-8 h-8" />
-          </div>
+        <motion.div whileHover={{ y: -5 }} className={cn("p-8 rounded-[40px] border-2 transition-all cursor-pointer group", activeTool === 'corrector' ? "bg-slate-900 border-blue-500 shadow-2xl" : "bg-slate-900/50 border-slate-800")} onClick={() => setActiveTool('corrector')}>
           <h2 className="text-2xl font-black text-white mb-2">المصحح الذكي</h2>
-          <p className="text-slate-400 font-medium text-sm leading-relaxed mb-6">
-            أداة ذكية لتصحيح إجابات الطلبة وتقديم تقييم دقيق مع ملاحظات بناءة.
-          </p>
-          <div className="flex items-center gap-2 text-blue-400 font-black text-xs uppercase tracking-widest">
-            <span>استخدام الأداة</span>
-            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </div>
+          <p className="text-slate-400 font-medium text-sm mb-6">تصحيح الأوراق والوضعيات الإدماجية بدقة عالية.</p>
         </motion.div>
       </div>
 
       <AnimatePresence mode="wait">
         {activeTool === 'generator' && (
-          <motion.div 
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
-            className="bg-slate-900 rounded-[40px] border border-slate-800 p-8 shadow-2xl"
-          >
-            <div className="flex items-center gap-4 mb-8 border-b border-slate-800 pb-8">
-              <div className="bg-purple-600 p-3 rounded-2xl">
-                <FileText className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="text-2xl font-black text-white">Generator Workspace</h3>
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="space-y-8">
+            <div className="flex items-center justify-between bg-slate-900 p-6 rounded-[32px] border border-slate-800">
+               <div className="flex items-center gap-4">
+                 <button onClick={saveAllPrefs} className="flex items-center gap-2 bg-purple-600/20 text-purple-400 px-6 py-2 rounded-xl text-xs font-black border border-purple-500/30">
+                   <Save className="w-4 h-4" />
+                   تذكر الكل
+                 </button>
+                 <button onClick={() => setIsEasyMode(!isEasyMode)} className={`flex items-center gap-2 px-6 py-2 rounded-xl text-xs font-black border transition-all ${isEasyMode ? 'bg-amber-600/20 text-amber-400 border-amber-500/30' : 'bg-slate-950 text-slate-500 border-slate-800'}`}>
+                   <Zap className="w-4 h-4" />
+                   {isEasyMode ? 'الوضع الذكي: مفعل' : 'تفعيل الوضع السهل'}
+                 </button>
+                 <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 gap-1">
+                   <button onClick={() => setGenLanguage('ar')} className={`px-3 py-1 rounded-lg text-[10px] font-black transition-all ${genLanguage === 'ar' ? 'bg-purple-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>AR</button>
+                   <button onClick={() => setGenLanguage('fr')} className={`px-3 py-1 rounded-lg text-[10px] font-black transition-all ${genLanguage === 'fr' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>FR</button>
+                   <button onClick={() => setGenLanguage('en')} className={`px-3 py-1 rounded-lg text-[10px] font-black transition-all ${genLanguage === 'en' ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>EN</button>
+                 </div>
+               </div>
+               <h2 className="text-xl font-black text-white">إعدادات الوثيقة</h2>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="space-y-6">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 pl-4">Type of Document</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {['lesson_plan', 'assignment', 'exam'].map((type) => (
-                      <button 
-                        key={type}
-                        onClick={() => setGenScope(type as any)}
-                        className={`py-3 rounded-2xl text-xs font-black transition-all ${genScope === type ? 'bg-purple-600 text-white shadow-lg' : 'bg-slate-950 text-slate-500 hover:text-slate-300 border border-slate-800'}`}
-                      >
-                        {type === 'lesson_plan' ? 'Memo' : type === 'assignment' ? 'Test' : 'Exam'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                {!isEasyMode ? (
+                  <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-8 space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField label="الاسم" value={teacherFirstName} onChange={setTeacherFirstName} onSave={() => savePrefs('teacherFirstName', teacherFirstName)} />
+                      <InputField label="اللقب" value={teacherLastName} onChange={setTeacherLastName} onSave={() => savePrefs('teacherLastName', teacherLastName)} />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <SelectField label="الطور" value={phase} onChange={setPhase} options={['ابتدائي', 'متوسط', 'ثانوي']} onSave={() => savePrefs('phase', phase)} />
+                      <SelectField label="المادة" value={subject} onChange={setSubject} options={['اللغة العربية', 'الرياضيات', 'العلوم الطبيعية', 'الفيزياء', 'التاريخ والجغرافيا', 'التربية الإسلامية', 'اللغة الفرنسية', 'اللغة الإنجليزية']} onSave={() => savePrefs('subject', subject)} />
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 pl-4">Subject</label>
-                    <input 
-                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-6 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold"
-                      value={genSubject}
-                      onChange={(e) => setGenSubject(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 pl-4">Level</label>
-                    <input 
-                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-6 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-purple-500 transition-all font-bold"
-                      value={genLevel}
-                      onChange={(e) => setGenLevel(e.target.value)}
-                    />
-                  </div>
-                </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <InputField label="المؤسسة" value={school} onChange={setSchool} onSave={() => savePrefs('school', school)} />
+                      <SelectField label="المستوى" value={level} onChange={setLevel} options={
+                        phase === 'ابتدائي' ? ['تحضيري', 'سنة 1', 'سنة 2', 'سنة 3', 'سنة 4', 'سنة 5'] :
+                        phase === 'ثانوي' ? ['1 ثانوي', '2 ثانوي', '3 ثانوي'] :
+                        ['1 متوسط', '2 متوسط', '3 متوسط', '4 متوسط']
+                      } onSave={() => savePrefs('level', level)} />
+                    </div>
 
-                <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 pl-4">Topic / Specific Details</label>
-                  <textarea 
-                    rows={4}
-                    placeholder="e.g. Photosynthesis in plants, Second World War, Quadratic equations..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-3xl px-6 py-4 text-sm text-white outline-none focus:ring-2 focus:ring-purple-500 transition-all font-medium resize-none"
-                    value={genTopic}
-                    onChange={(e) => setGenTopic(e.target.value)}
-                  />
+                    <div className="border-t border-slate-800 pt-6 space-y-6">
+                      <h3 className="text-sm font-black text-slate-500 uppercase tracking-widest">البيانات البيداغوجية</h3>
+                      
+                      {(subject === 'اللغة الفرنسية' || subject === 'اللغة الإنجليزية') ? (
+                        <>
+                          <div className="grid grid-cols-2 gap-4">
+                            <InputField label="Projet" value={projectNum} onChange={setProjectNum} onSave={() => savePrefs('projectNum', projectNum)} />
+                            <InputField label="Séquence" value={sequenceNum} onChange={setSequenceNum} onSave={() => savePrefs('sequenceNum', sequenceNum)} />
+                          </div>
+                          <InputField label="Séance / Activité" value={activity} onChange={setActivity} onSave={() => savePrefs('activity', activity)} />
+                          <InputField label="Tâche" value={tache} onChange={setTache} onSave={() => savePrefs('tache', tache)} />
+                          <TextAreaField label="Objéctifs d'apprentissage" value={learningObjective} onChange={setLearningObjective} />
+                        </>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-2 gap-4">
+                            <InputField label="رقم المقطع" value={sectionNum} onChange={setSectionNum} onSave={() => savePrefs('sectionNum', sectionNum)} />
+                            <SelectField label="الميدان" value={field} onChange={setField} options={getFieldsForSubject(subject)} onSave={() => savePrefs('field', field)} />
+                          </div>
+                          <InputField label="المورد (عنوان الدرس)" value={topic} onChange={setTopic} onSave={() => savePrefs('topic', topic)} />
+                          {subject === 'التاريخ والجغرافيا' && (
+                            <InputField label="التعليمة (Instruction)" value={detailedRequest} onChange={setDetailedRequest} placeholder="مثال: اعتمادا على السندات..." />
+                          )}
+                          <TextAreaField label="الكفاءة/الهدف" value={competency} onChange={setCompetency} />
+                          <InputField label="السندات" value={materials} onChange={setMaterials} onSave={() => savePrefs('materials', materials)} />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-8 space-y-6">
+                    <SelectField label="المادة" value={subject} onChange={setSubject} options={['اللغة العربية', 'الرياضيات', 'العلوم الطبيعية', 'الفيزياء', 'التاريخ والجغرافيا', 'التربية الإسلامية', 'اللغة الفرنسية', 'اللغة الإنجليزية']} />
+                    <SelectField label="المستوى" value={level} onChange={setLevel} options={['1 متوسط', '2 متوسط', '3 متوسط', '4 متوسط', '1 ثانوي', '2 ثانوي', '3 ثانوي']} />
+                    <InputField label="المقطع / الدرس" value={topic} onChange={setTopic} placeholder="مثال: القصور الذاتي أو Projet 1 Sec 1..." />
+                  </div>
+                )}
+                
+                <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-8 space-y-6">
+                  <TextAreaField label="توجيهات إضافية" value={aiPrompt} onChange={setAiPrompt} placeholder="مثلاً: استخدم لغة بسيطة..." />
+                  <button onClick={generateContent} disabled={isGenerating || !topic} className="w-full py-5 bg-purple-600 hover:bg-purple-700 text-white font-black rounded-2xl transition-all flex items-center justify-center gap-3">
+                    {isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Wand2 className="w-6 h-6" />}
+                    توليد الوثيقة
+                  </button>
                 </div>
-
-                <button 
-                  onClick={generateContent}
-                  disabled={isGenerating || !genTopic}
-                  className="w-full py-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-black rounded-2xl transition-all shadow-lg shadow-purple-500/20 flex items-center justify-center gap-3 group"
-                >
-                  {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />}
-                  Generate Document
-                </button>
               </div>
 
-              <div className="bg-slate-950 rounded-[32px] border border-slate-800 p-8 min-h-[400px] relative">
-                {!genResult && !isGenerating && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-700 p-8 text-center">
-                    <Sparkles className="w-12 h-12 mb-4 opacity-50" />
-                    <p className="font-bold">Your generated content will appear here.</p>
+              <div className="lg:sticky lg:top-8 space-y-6">
+                <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-4">
+                  <div className="flex items-center justify-between px-4 pb-4 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <button onClick={exportToPDF} className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white" title="PDF">
+                        <Download className="w-4 h-4" />
+                      </button>
+                      <button onClick={exportToWord} className="p-2 bg-blue-500/10 text-blue-500 rounded-lg hover:bg-blue-500 hover:text-white" title="Word">
+                        <FileText className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <span className="text-white font-black">المعاينة</span>
                   </div>
-                )}
-                {isGenerating && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-purple-500/50 p-8 text-center">
-                    <Loader2 className="w-12 h-12 mb-4 animate-spin" />
-                    <p className="font-black animate-pulse">Consulting AI Professors...</p>
+                  <div className="overflow-x-auto p-4 flex justify-center bg-slate-950/20 rounded-3xl min-h-[600px]">
+                    <div className="bg-white text-slate-900 shadow-2xl min-h-[1123px] w-[794px] shrink-0 transform origin-top scale-[0.6] -mb-[450px]">
+                      <ReactQuill theme="snow" value={genResult} onChange={setGenResult} className="h-full pedagogical-editor" />
+                    </div>
                   </div>
-                )}
-                <div className="markdown-body prose prose-invert max-w-none">
-                  <ReactMarkdown>{genResult}</ReactMarkdown>
                 </div>
-                {genResult && !isGenerating && (
-                  <div className="absolute bottom-4 right-4 flex gap-2">
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(genResult);
-                        alert('Generated content copied to clipboard!');
-                      }}
-                      className="bg-slate-900 border border-slate-800 p-3 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-purple-400 transition-all flex items-center gap-2"
-                      title="Copy to clipboard"
-                    >
-                      <ClipboardCheck className="w-5 h-5" />
-                      <span className="text-[10px] font-black uppercase">Copy Text</span>
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           </motion.div>
         )}
 
         {activeTool === 'corrector' && (
-          <motion.div 
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
-            className="bg-slate-900 rounded-[40px] border border-slate-800 p-8 shadow-2xl"
-          >
-            <div className="flex items-center gap-4 mb-8 border-b border-slate-800 pb-8">
-              <div className="bg-blue-600 p-3 rounded-2xl">
-                <ClipboardCheck className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="text-2xl font-black text-white">Correction Workspace</h3>
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="space-y-8">
+            <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-8 space-y-6">
+              <TextAreaField label="النص المراد تصحيحه" value={correctText} onChange={setCorrectText} />
+              <button onClick={correctContent} disabled={isCorrecting || !correctText} className="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl flex items-center justify-center gap-3">
+                {isCorrecting ? <Loader2 className="w-6 h-6 animate-spin" /> : <Zap className="w-6 h-6" />}
+                بدء التصحيح
+              </button>
             </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 pl-4">Input student content or scan text</label>
-                  <textarea 
-                    rows={12}
-                    placeholder="Paste student answer, essay, or specific exercise text here..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-3xl px-6 py-6 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium resize-none shadow-inner"
-                    value={correctText}
-                    onChange={(e) => setCorrectText(e.target.value)}
-                  />
-                </div>
-
-                <div className="flex items-center gap-4 text-xs font-bold text-slate-500 bg-blue-500/5 p-4 rounded-2xl border border-blue-500/10">
-                  <Info className="w-5 h-5 text-blue-500 shrink-0" />
-                  AI will check grammar, factual accuracy, and provide a grading suggestion based on your subject profile.
-                </div>
-
-                <button 
-                  onClick={correctContent}
-                  disabled={isCorrecting || !correctText}
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black rounded-2xl transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-3 group"
-                >
-                  {isCorrecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5 group-hover:scale-125 transition-transform" />}
-                  Analyze & Correct
-                </button>
+            {correctResult && (
+              <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-8">
+                <ReactQuill theme="bubble" readOnly value={correctResult} />
               </div>
-
-              <div className="bg-slate-950 rounded-[32px] border border-slate-800 p-8 min-h-[400px] relative">
-                {!correctResult && !isCorrecting && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-700 p-8 text-center">
-                    <ClipboardCheck className="w-12 h-12 mb-4 opacity-50" />
-                    <p className="font-bold">Correction and feedback will appear here.</p>
-                  </div>
-                )}
-                {isCorrecting && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-blue-500/50 p-8 text-center">
-                    <Loader2 className="w-12 h-12 mb-4 animate-spin" />
-                    <p className="font-black animate-pulse">Analyzing student work...</p>
-                  </div>
-                )}
-                <div className="markdown-body prose prose-invert max-w-none">
-                  <ReactMarkdown>{correctResult}</ReactMarkdown>
-                </div>
-                {correctResult && !isCorrecting && (
-                  <div className="absolute bottom-4 right-4 flex gap-2">
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(correctResult);
-                        alert('Correction copied to clipboard!');
-                      }}
-                      className="bg-slate-900 border border-slate-800 p-3 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-blue-400 transition-all flex items-center gap-2"
-                      title="Copy to clipboard"
-                    >
-                      <ClipboardCheck className="w-5 h-5" />
-                      <span className="text-[10px] font-black uppercase">Copy Result</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -662,15 +716,38 @@ export default function PremiumTools() {
   );
 }
 
-// Helper icons
-function ChevronRight(props: any) {
-  return <svg {...props} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>;
+function InputField({ label, value, onChange, placeholder, type = 'text', onSave }: any) {
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between items-center px-1">
+        <label className="text-xs font-black text-slate-500">{label}</label>
+        {onSave && <button onClick={onSave} className="text-[10px] text-purple-400 hover:underline">تذكرني</button>}
+      </div>
+      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-2 rounded-xl text-sm" />
+    </div>
+  );
 }
 
-function Info(props: any) {
-  return <svg {...props} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>;
+function SelectField({ label, value, onChange, options, onSave }: any) {
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between items-center px-1">
+        <label className="text-xs font-black text-slate-500">{label}</label>
+        {onSave && <button onClick={onSave} className="text-[10px] text-purple-400 hover:underline">تذكرني</button>}
+      </div>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-2 rounded-xl text-sm">
+        <option value="">اختر {label}</option>
+        {options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+      </select>
+    </div>
+  );
 }
 
-function cn(...classes: string[]) {
-  return classes.filter(Boolean).join(' ');
+function TextAreaField({ label, value, onChange, placeholder }: any) {
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-black text-slate-500 px-1">{label}</label>
+      <textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl text-sm resize-none" />
+    </div>
+  );
 }

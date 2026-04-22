@@ -4,7 +4,7 @@ service cloud.firestore {
     
     // 0. Global Safety Net
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if request.auth.token.email == "dalinadjib1990@gmail.com" || request.auth.token.email == "admin@ais-dev.com";
     }
 
     // ===============================================================
@@ -21,8 +21,13 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        (request.auth.token.email == "dalinadjib1990@gmail.com" && request.auth.token.email_verified == true)
+        request.auth.token.email == "dalinadjib1990@gmail.com" ||
+        request.auth.token.email == "admin@ais-dev.com"
       );
+    }
+
+    function isAdminOnly() {
+      return isAdmin();
     }
 
     function isValidId(id) {
@@ -75,7 +80,11 @@ service cloud.firestore {
              (!('bioTextColor' in data) || (data.bioTextColor is string && data.bioTextColor.size() <= 50)) &&
              (!('isActivated' in data) || (data.isActivated is bool)) &&
              (!('premiumUntil' in data) || (data.premiumUntil is timestamp)) &&
-             (!('lastGenerationDate' in data) || (data.lastGenerationDate is timestamp));
+             (!('lastGenerationDate' in data) || (data.lastGenerationDate is timestamp)) &&
+             (!('lastUsageResetDate' in data) || (data.lastUsageResetDate is timestamp)) &&
+             (!('dailyGenCount' in data) || (data.dailyGenCount is number)) &&
+             (!('dailyCorrectCount' in data) || (data.dailyCorrectCount is number)) &&
+             (!('savedPreferences' in data) || (data.savedPreferences is map));
     }
 
     function isValidUserPrivateData(data) {
@@ -144,9 +153,9 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isSignedIn();
       allow list: if isSignedIn();
-      allow create: if isOwner(userId) && isVerified() && isValidUserProfile(incoming());
+      allow create: if isOwner(userId) && isValidUserProfile(incoming());
       allow update: if (isOwner(userId) && isValidUserProfile(incoming()) && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'firstName', 'lastName', 'photoURL', 'bio', 'subject', 'school', 'wilaya', 'level', 'yearsOfExperience', 'gender', 'birthDate', 'role', 'rank', 'isProfileComplete', 'showEmail', 'showPhone', 'lastSeen', 'bioBackground', 'bioTextColor', 'blockedUsers', 'isActivated', 'premiumUntil', 'lastGenerationDate'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'firstName', 'lastName', 'photoURL', 'bio', 'subject', 'school', 'wilaya', 'level', 'yearsOfExperience', 'gender', 'birthDate', 'role', 'rank', 'isProfileComplete', 'showEmail', 'showPhone', 'lastSeen', 'bioBackground', 'bioTextColor', 'blockedUsers', 'isActivated', 'premiumUntil', 'lastGenerationDate', 'lastUsageResetDate', 'dailyGenCount', 'dailyCorrectCount', 'savedPreferences', 'settings'])
         )) || (
           // Social interaction: anyone can add themselves to followers/following
           isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['followers', 'following'])
@@ -163,7 +172,7 @@ service cloud.firestore {
     match /posts/{postId} {
       allow get: if isSignedIn();
       allow list: if isSignedIn() && (resource.data.privacy == 'public' || resource.data.authorId == request.auth.uid);
-      allow create: if isSignedIn() && isVerified() && isValidPost(incoming());
+      allow create: if isSignedIn() && isValidPost(incoming());
       allow update: if (isOwner(existing().authorId) && isValidPost(incoming()) && (
           incoming().diff(existing()).affectedKeys().hasOnly(['content', 'privacy', 'imageUrl', 'videoUrl', 'background', 'reactions'])
         )) || (
@@ -211,7 +220,7 @@ service cloud.firestore {
     match /products/{productId} {
       allow get: if isSignedIn();
       allow list: if isSignedIn();
-      allow create: if isSignedIn() && isVerified();
+      allow create: if isSignedIn();
       allow update: if isOwner(existing().sellerId) || isAdmin();
       allow delete: if isOwner(existing().sellerId) || isAdmin();
     }
@@ -225,6 +234,16 @@ service cloud.firestore {
 
     match /typing/{roomId} {
       allow read, write: if isSignedIn() && (roomId == 'global' || roomId.matches('.*' + request.auth.uid + '.*'));
+    }
+
+    match /activation_codes/{codeId} {
+      // Admin has full control
+      allow read, write: if isAdmin();
+      
+      // Regular users can query to find a code and use it
+      allow list: if isSignedIn();
+      allow get: if isSignedIn();
+      allow delete: if isSignedIn();
     }
 
     // Connection test path

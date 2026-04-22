@@ -82,6 +82,7 @@ export default function PostCard({ post }: PostCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleDelete = async () => {
+    if (!post?.id) return;
     try {
       // Delete comments first
       const commentsQuery = query(collection(db, 'comments'), where('postId', '==', post.id));
@@ -135,7 +136,7 @@ export default function PostCard({ post }: PostCardProps) {
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
 
   useEffect(() => {
-    if (!showComments) {
+    if (!showComments || !post?.id) {
       setComments([]);
       return;
     }

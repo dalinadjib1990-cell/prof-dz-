@@ -80,7 +80,7 @@ export default function Profile() {
   }, [profile?.wilaya, profile?.reminders?.prayer]);
 
   useEffect(() => {
-    if (!uid || !loggedInProfile) return;
+    if (!uid || !loggedInProfile?.uid) return;
 
     // Check connection status
     const q = query(

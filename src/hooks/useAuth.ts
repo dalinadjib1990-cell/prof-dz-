@@ -19,9 +19,6 @@ export function useAuth() {
       setUser(u);
       
       if (u) {
-        // Update lastSeen immediately on login
-        updateDoc(doc(db, 'users', u.uid), { lastSeen: serverTimestamp() }).catch(() => {});
-
         // Set a timeout to prevent infinite loading if Firestore hangs
         loadingTimeout = setTimeout(() => {
           if (loading) {
@@ -30,13 +27,6 @@ export function useAuth() {
             setLoading(false);
           }
         }, 30000);
-
-        // Update lastSeen periodically (every 2 minutes)
-        const statusInterval = setInterval(() => {
-          if (auth.currentUser) {
-            updateDoc(doc(db, 'users', auth.currentUser.uid), { lastSeen: serverTimestamp() }).catch(() => {});
-          }
-        }, 120000);
 
         // Listen for real-time profile updates
         const docRef = doc(db, 'users', u.uid);
@@ -63,9 +53,21 @@ export function useAuth() {
               publicData.yearsOfExperience !== undefined
             );
             
+            const updates: any = {};
             if (publicData.isProfileComplete !== isComplete) {
-              updateDoc(docRef, { isProfileComplete: isComplete }).catch(e => {
-                console.error("Error auto-updating profile completion status:", e);
+              updates.isProfileComplete = isComplete;
+            }
+            
+            // Update lastSeen if not updated recently (more than 1 minute)
+            const now = new Date();
+            const lastSeen = publicData.lastSeen?.toDate();
+            if (!lastSeen || (now.getTime() - lastSeen.getTime() > 60000)) {
+              updates.lastSeen = serverTimestamp();
+            }
+
+            if (Object.keys(updates).length > 0) {
+              updateDoc(docRef, updates).catch(e => {
+                console.error("Error auto-updating profile:", e);
               });
             }
             setLoading(false);
@@ -144,7 +146,6 @@ export function useAuth() {
         unsubscribeProfile = () => {
           unsubPublic();
           unsubPrivate();
-          clearInterval(statusInterval);
         };
       } else {
         if (unsubscribeProfile) unsubscribeProfile();

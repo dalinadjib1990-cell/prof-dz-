@@ -49,21 +49,23 @@ export default function Settings() {
   }, [profile]);
 
   const fetchBlockedUsers = async () => {
-    if (!profile?.blockedUsers?.length) {
+    const blockedList = profile?.blockedUsers?.filter(uid => !!uid) || [];
+    if (!blockedList.length) {
       setBlockedUsers([]);
       return;
     }
-    const q = query(collection(db, 'users'), where('uid', 'in', profile.blockedUsers));
+    const q = query(collection(db, 'users'), where('uid', 'in', blockedList.slice(0, 10)));
     const snap = await getDocs(q);
     setBlockedUsers(snap.docs.map(doc => doc.data() as UserProfile));
   };
 
   const fetchFriends = async () => {
-    if (!profile?.friends?.length) {
+    const friendList = profile?.friends?.filter(uid => !!uid) || [];
+    if (!friendList.length) {
       setFriends([]);
       return;
     }
-    const q = query(collection(db, 'users'), where('uid', 'in', profile.friends));
+    const q = query(collection(db, 'users'), where('uid', 'in', friendList.slice(0, 10)));
     const snap = await getDocs(q);
     setFriends(snap.docs.map(doc => doc.data() as UserProfile));
   };

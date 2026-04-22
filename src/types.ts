@@ -32,6 +32,7 @@ export interface UserProfile {
   lastUsageResetDate?: Timestamp | any;
   dailyGenCount?: number;
   dailyCorrectCount?: number;
+  savedPreferences?: SavedPreferences;
   settings?: UserSettings;
   reminders?: {
     prayer?: boolean;
@@ -129,4 +130,25 @@ export interface Notification {
   postId?: string;
   read: boolean;
   createdAt: Timestamp;
+}
+
+export interface SavedPreferences {
+  teacherFirstName?: string;
+  teacherLastName?: string;
+  phase?: string;
+  subject?: string;
+  school?: string;
+  level?: string;
+  isEasyMode?: boolean;
+  sectionNum?: string;
+  field?: string;
+  topic?: string;
+  projectNum?: string;
+  sequenceNum?: string;
+  tache?: string;
+  activity?: string;
+  learningObjective?: string;
+  competency?: string;
+  materials?: string;
+  genLanguage?: string;
 }

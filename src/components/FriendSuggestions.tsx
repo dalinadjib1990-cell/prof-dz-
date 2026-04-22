@@ -16,7 +16,7 @@ export default function FriendSuggestions() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!loggedInProfile) return;
+    if (!loggedInProfile?.uid) return;
 
     // Fetch invitations to filter out existing connections
     const invQuery = query(

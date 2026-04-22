@@ -40,7 +40,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile?.uid) return;
 
     const q = query(
       collection(db, 'posts'),
@@ -223,33 +223,7 @@ export default function Home() {
         </motion.div>
       )}
 
-      {/* Quick Access Apps */}
-      {isPremium && (
-        <div className="grid grid-cols-2 gap-3 mb-6 animate-in fade-in slide-in-from-top-4 duration-500">
-          <a 
-            href="https://cour-qi.vercel.app/" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="bg-slate-900/50 hover:bg-amber-500/10 border border-slate-800 hover:border-amber-500/50 p-4 rounded-2xl transition-all group flex flex-col items-center gap-2 text-center"
-          >
-            <div className="bg-amber-500/20 p-2 rounded-xl group-hover:scale-110 transition-transform">
-              <Zap className="w-5 h-5 text-amber-500" />
-            </div>
-            <span className="text-[10px] font-black text-slate-400 group-hover:text-amber-500 uppercase tracking-tighter">التطبيق المصحح</span>
-          </a>
-          <a 
-            href="https://pro-mat-psn3.vercel.app/" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="bg-slate-900/50 hover:bg-emerald-500/10 border border-slate-800 hover:border-emerald-500/50 p-4 rounded-2xl transition-all group flex flex-col items-center gap-2 text-center"
-          >
-            <div className="bg-emerald-500/20 p-2 rounded-xl group-hover:scale-110 transition-transform">
-              <ExternalLink className="w-5 h-5 text-emerald-500" />
-            </div>
-            <span className="text-[10px] font-black text-slate-400 group-hover:text-emerald-500 uppercase tracking-tighter">مولد المذكرات</span>
-          </a>
-        </div>
-      )}
+      {/* Quick Access Apps - Removed to enforce limits via AI Tools page */}
 
       {/* Premium Tool CTA for Mobile */}
       <div className="lg:hidden mb-6">
