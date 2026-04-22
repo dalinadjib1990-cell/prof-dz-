@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Moon, 
   Sun, 
@@ -45,9 +45,7 @@ export const PrayerWaterBar: React.FC = () => {
   const waterAudio = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    if (profile?.wilaya) {
-      fetchPrayerTimes(profile.wilaya);
-    }
+    fetchPrayerTimes(profile?.wilaya || 'Alger');
   }, [profile?.wilaya]);
 
   useEffect(() => {
@@ -62,9 +60,29 @@ export const PrayerWaterBar: React.FC = () => {
 
   const fetchPrayerTimes = async (wilaya: string) => {
     try {
-      // Using Aladhan API
-      const response = await fetch(`https://api.aladhan.com/v1/timingsByCity?city=${wilaya}&country=Algeria&method=3`);
-      const data = await response.json();
+      // Clean wilaya name for API
+      let city = wilaya;
+      if (city.includes('(') && city.includes(')')) {
+        city = city.match(/\(([^)]+)\)/)?.[1] || city;
+      } else if (city.includes('-')) {
+        city = city.split('-')[1].trim();
+      }
+      
+      // Normalize common names
+      if (city.toLowerCase() === 'alger') city = 'Algiers';
+      
+      const tryFetch = async (cityName: string) => {
+        const response = await fetch(`https://api.aladhan.com/v1/timingsByCity?city=${encodeURIComponent(cityName)}&country=Algeria&method=3`);
+        return await response.json();
+      };
+
+      let data = await tryFetch(city);
+      
+      // Fallback if city name failed
+      if (data.code !== 200 && city === 'Algiers') {
+        data = await tryFetch('Alger');
+      }
+
       if (data.code === 200) {
         setPrayerTimes(data.data.timings);
       }

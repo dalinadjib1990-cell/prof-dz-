@@ -229,18 +229,20 @@ export default function Home() {
       <div className="lg:hidden mb-6">
         <Link 
           to="/premium-tools"
-          className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl shadow-lg shadow-purple-500/20 group overflow-hidden relative"
+          className="flex items-center justify-between p-5 bg-gradient-to-r from-purple-600 via-indigo-600 to-indigo-700 rounded-3xl shadow-xl shadow-purple-500/20 group overflow-hidden relative active:scale-[0.98] transition-transform duration-200"
         >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full translate-x-16 -translate-y-16 blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-          <div className="flex items-center gap-3 relative z-10">
-            <Sparkles className="w-6 h-6 text-white animate-pulse" />
+          <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full translate-x-16 -translate-y-16 blur-3xl group-hover:scale-125 transition-transform duration-700"></div>
+          <div className="flex items-center gap-4 relative z-10">
+            <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md">
+              <Sparkles className="w-6 h-6 text-white animate-pulse" />
+            </div>
             <div>
-              <p className="text-white font-black text-sm">أدوات الذكاء الاصطناعي</p>
-              <p className="text-white/70 text-[10px] font-bold">مولد مذكرات، فروض، واختبارات</p>
+              <p className="text-white font-black text-lg">أدوات الذكاء الاصطناعي</p>
+              <p className="text-white/70 text-xs font-bold">مولد مذكرات، فروض، واختبارات</p>
             </div>
           </div>
-          <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm relative z-10">
-            <ChevronDown className="w-4 h-4 text-white -rotate-90" />
+          <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-md relative z-10">
+            <ChevronDown className="w-5 h-5 text-white -rotate-90" />
           </div>
         </Link>
       </div>

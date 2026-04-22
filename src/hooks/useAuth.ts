@@ -40,8 +40,31 @@ export function useAuth() {
           if (docSnap.exists()) {
             const publicData = docSnap.data() as UserProfile;
             setProfile(prev => {
-              const newProfile = { ...(prev || {}), ...publicData } as UserProfile;
-              return newProfile;
+              const base = prev || {};
+              // Deep merge defaults for reminders and settings for existing users
+              const merged = {
+                ...base,
+                ...publicData,
+                settings: {
+                  language: 'ar',
+                  theme: 'dark',
+                  fontSize: 'medium',
+                  fontType: 'sans',
+                  ...(base.settings || {}),
+                  ...(publicData.settings || {})
+                },
+                reminders: {
+                  prayer: false,
+                  water: false,
+                  exercise: false,
+                  waterGoal: 8,
+                  waterCurrent: 0,
+                  waterGlassCount: 0,
+                  ...(base.reminders || {}),
+                  ...(publicData.reminders || {})
+                }
+              } as UserProfile;
+              return merged;
             });
             
             // Check if profile is complete
@@ -58,11 +81,20 @@ export function useAuth() {
               updates.isProfileComplete = isComplete;
             }
             
-            // Update lastSeen if not updated recently (more than 1 minute)
+            // Update lastSeen if not updated recently (more than 5 minutes)
+            // Be careful with serverTimestamp() comparison
             const now = new Date();
             const lastSeen = publicData.lastSeen?.toDate();
-            if (!lastSeen || (now.getTime() - lastSeen.getTime() > 60000)) {
+            // Only update if we have a real date and it's old enough
+            // and we are NOT currently in a pending write state (approximated)
+            if (lastSeen && (now.getTime() - lastSeen.getTime() > 300000)) {
               updates.lastSeen = serverTimestamp();
+            } else if (!lastSeen) {
+              // If it's null, it might be a pending write, so we wait
+              // Only update if it's truly missing (new profile)
+              if (!publicData.createdAt) {
+                 updates.lastSeen = serverTimestamp();
+              }
             }
 
             if (Object.keys(updates).length > 0) {
@@ -74,10 +106,25 @@ export function useAuth() {
           } else {
             // Create profile if it doesn't exist
             console.log("No profile found, creating one...");
+            
+            let firstName = '';
+            let lastName = '';
+            const pendingData = localStorage.getItem('pendingRegistrationData');
+            if (pendingData) {
+              try {
+                const parsed = JSON.parse(pendingData);
+                firstName = parsed.firstName || '';
+                lastName = parsed.lastName || '';
+                localStorage.removeItem('pendingRegistrationData');
+              } catch (e) {
+                console.error("Error parsing pending registration data:", e);
+              }
+            }
+
             const newProfile: Partial<UserProfile> = {
               uid: u.uid,
-              displayName: u.displayName || 'Teacher',
-              photoURL: u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName || 'T'}`,
+              displayName: firstName && lastName ? `${firstName} ${lastName}` : (u.displayName || 'Teacher'),
+              photoURL: u.photoURL || `https://ui-avatars.com/api/?name=${firstName || u.displayName || 'T'}`,
               createdAt: serverTimestamp(),
               lastSeen: serverTimestamp(),
               isProfileComplete: false,
@@ -87,12 +134,30 @@ export function useAuth() {
               blockedUsers: [],
               bioBackground: 'linear-gradient(to bottom right, #4f46e5, #7c3aed)',
               bioTextColor: '#ffffff',
+              savedPreferences: {
+                teacherFirstName: firstName,
+                teacherLastName: lastName
+              },
+              usage: {
+                generate: 0,
+                correct: 0,
+                image: 0,
+                translate: 0,
+                lastUsed: new Date().toISOString().split('T')[0]
+              },
               settings: {
                 language: 'ar',
                 theme: 'dark',
                 fontSize: 'medium',
-                fontType: 'sans',
-                defaultPostPrivacy: 'public'
+                fontType: 'sans'
+              },
+              reminders: {
+                prayer: false,
+                water: false,
+                exercise: false,
+                waterGoal: 8,
+                waterCurrent: 0,
+                waterGlassCount: 0
               }
             };
             
@@ -200,5 +265,7 @@ export function useAuth() {
     setLoading(false);
   };
 
-  return { user, profile, loading, error, retry, completeProfile };
+  const statusInterval = null;
+
+  return { user, profile, loading, error, retry, completeProfile, statusInterval };
 }

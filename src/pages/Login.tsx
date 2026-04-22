@@ -2,15 +2,20 @@ import React, { useState } from 'react';
 import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, setPersistence, browserLocalPersistence, browserSessionPersistence, signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { motion } from 'motion/react';
-import { BookOpen, GraduationCap, Mail, Lock, User, LogIn, RefreshCw, AlertCircle } from 'lucide-react';
+import { BookOpen, GraduationCap, Mail, Lock, User, LogIn, RefreshCw, AlertCircle, Sparkles, UserCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
   const [loading, setLoading] = useState(false);
   const [isRegister, setIsRegister] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
+
+  const navigate = useNavigate();
 
   const handleGoogleLogin = async () => {
     if (loading) return;
@@ -82,7 +87,14 @@ export default function Login() {
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       
       if (isRegister) {
-        await createUserWithEmailAndPassword(auth, email, password);
+        if (!firstName || !lastName) {
+          throw new Error('يرجى إدخال الاسم واللقب');
+        }
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        // We can add logic to update profile with firstName/lastName if needed, 
+        // but useAuth hook usually handles initial profile creation from auth user.
+        // We'll pass it via localStorage for useAuth to pick up or use it in the updateDoc call.
+        localStorage.setItem('pendingRegistrationData', JSON.stringify({ firstName, lastName }));
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
@@ -92,6 +104,10 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTryForFree = () => {
+    navigate('/premium-tools?mode=guest');
   };
 
   const handleSwitchAccount = async () => {
@@ -178,12 +194,39 @@ export default function Login() {
         )}
 
         <form onSubmit={handleEmailAuth} className="space-y-4">
+          {isRegister && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="الاسم"
+                  className="w-full pl-12 pr-4 py-3.5 bg-slate-950 border border-slate-800 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all text-white placeholder:text-slate-600 text-sm font-bold"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="relative">
+                <UserCircle className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="اللقب"
+                  className="w-full pl-12 pr-4 py-3.5 bg-slate-950 border border-slate-800 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all text-white placeholder:text-slate-600 text-sm font-bold"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+          )}
+
           <div className="relative">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
             <input
               type="email"
-              placeholder="Email address"
-              className="w-full pl-12 pr-4 py-3.5 bg-slate-950 border border-slate-800 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all text-white placeholder:text-slate-600"
+              placeholder="البريد الإلكتروني"
+              className="w-full pl-12 pr-4 py-3.5 bg-slate-950 border border-slate-800 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all text-white placeholder:text-slate-600 text-sm font-bold"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -193,8 +236,8 @@ export default function Login() {
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
             <input
               type="password"
-              placeholder="Password"
-              className="w-full pl-12 pr-4 py-3.5 bg-slate-950 border border-slate-800 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all text-white placeholder:text-slate-600"
+              placeholder="كلمة السر"
+              className="w-full pl-12 pr-4 py-3.5 bg-slate-950 border border-slate-800 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-all text-white placeholder:text-slate-600 text-sm font-bold"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -212,7 +255,7 @@ export default function Login() {
                 checked={rememberMe} 
                 onChange={() => setRememberMe(!rememberMe)} 
               />
-              <span className="text-xs font-bold text-slate-400 group-hover:text-slate-300 transition-colors">Remember Me</span>
+              <span className="text-xs font-bold text-slate-400 group-hover:text-slate-300 transition-colors">تذكرني</span>
             </label>
             <button 
               type="button"
@@ -220,7 +263,7 @@ export default function Login() {
               className="text-xs font-bold text-slate-500 hover:text-purple-400 transition-colors flex items-center gap-1"
             >
               <RefreshCw className="w-3 h-3" />
-              Switch Account
+              تبديل الحساب
             </button>
           </div>
 
@@ -234,8 +277,19 @@ export default function Login() {
             ) : (
               <LogIn className="w-5 h-5" />
             )}
-            {loading ? 'Processing...' : (isRegister ? 'Create Account' : 'Sign In')}
+            {loading ? 'جاري المعالجة...' : (isRegister ? 'إنشاء حساب جديد' : 'تسجيل الدخول')}
           </button>
+
+          {!isRegister && (
+            <button
+              type="button"
+              onClick={handleTryForFree}
+              className="w-full py-4 bg-amber-500/10 border border-amber-500/20 text-amber-500 hover:bg-amber-500/20 font-black rounded-2xl transition-all flex items-center justify-center gap-3 group"
+            >
+              <Sparkles className="w-5 h-5 group-hover:animate-spin-slow" />
+              جرب مجاناً (3 مرات توليد)
+            </button>
+          )}
         </form>
 
         <div className="my-6 flex items-center gap-4">
@@ -258,12 +312,12 @@ export default function Login() {
         </button>
 
         <p className="mt-8 text-center text-slate-500 font-medium">
-          {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
+          {isRegister ? 'لديك حساب بالفعل؟' : "ليس لديك حساب؟"}{' '}
           <button
             onClick={() => setIsRegister(!isRegister)}
-            className="text-purple-500 hover:text-purple-400 font-bold underline decoration-2 underline-offset-4"
+            className="text-amber-500 hover:text-amber-400 font-extrabold underline decoration-2 underline-offset-8 px-2 py-1 bg-amber-500/10 rounded-lg transition-all"
           >
-            {isRegister ? 'Sign In' : 'Register Now'}
+            {isRegister ? 'تسجيل الدخول' : 'فتح حساب جديد مجاناً'}
           </button>
         </p>
 

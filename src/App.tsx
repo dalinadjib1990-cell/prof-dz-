@@ -203,7 +203,7 @@ export default function App() {
                         <Route path="/saved" element={user ? <div className="p-8 bg-slate-900 rounded-3xl border border-slate-800 text-center"><h2 className="text-2xl font-black mb-4">Saved Resources</h2><p className="text-slate-400">Coming soon...</p></div> : <Navigate to="/login" />} />
                         <Route path="/colleagues" element={user ? <div className="p-8 bg-slate-900 rounded-3xl border border-slate-800 text-center"><h2 className="text-2xl font-black mb-4">Colleagues</h2><p className="text-slate-400">Coming soon...</p></div> : <Navigate to="/login" />} />
                         <Route path="/curriculum" element={user ? <div className="p-8 bg-slate-900 rounded-3xl border border-slate-800 text-center"><h2 className="text-2xl font-black mb-4">Curriculum</h2><p className="text-slate-400">Coming soon...</p></div> : <Navigate to="/login" />} />
-                        <Route path="/premium-tools" element={user ? <PremiumTools /> : <Navigate to="/login" />} />
+                        <Route path="/premium-tools" element={(user || window.location.search.includes('mode=guest')) ? <PremiumTools /> : <Navigate to="/login" />} />
                         <Route path="/image-uploader" element={user ? <CloudinaryUploader /> : <Navigate to="/login" />} />
                         <Route path="/settings" element={user ? <Settings /> : <Navigate to="/login" />} />
                         <Route path="*" element={<Navigate to="/" />} />

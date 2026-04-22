@@ -13,18 +13,41 @@ import { Document, Packer, Paragraph, TextRun, AlignmentType } from 'docx';
 
 import { UserProfile, SavedPreferences } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const getAi = () => {
+  // Use a safer way to check for global process variable in browser
+  const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
+  const key = env?.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  
+  if (!key) {
+    console.warn("GEMINI_API_KEY is missing. AI features may not work.");
+    return null;
+  }
+  return new GoogleGenAI({ apiKey: key });
+};
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(' ');
 }
 
 export default function PremiumTools() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
+  const [isGuest, setIsGuest] = useState(false);
+  const [guestAttempts, setGuestAttempts] = useState(0);
+
   const [activeTool, setActiveTool] = useState<'generator' | 'corrector' | null>(null);
   const [activationCode, setActivationCode] = useState('');
   const [isActivating, setIsActivating] = useState(false);
   const [activationError, setActivationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const isGuestMode = window.location.search.includes('mode=guest');
+    setIsGuest(isGuestMode && !user);
+    
+    if (isGuestMode) {
+      const savedAttempts = parseInt(localStorage.getItem('guestGenCount') || '0');
+      setGuestAttempts(savedAttempts);
+    }
+  }, [user]);
   
   // Persistence State
   const [isEasyMode, setIsEasyMode] = useState(false);
@@ -125,10 +148,14 @@ export default function PremiumTools() {
   }, [subject]);
 
   const isAdmin = profile?.email === 'dalinadjib1990@gmail.com';
-  const isPremium = isAdmin || (profile?.premiumUntil ? profile.premiumUntil.toDate() > new Date() : false);
+  const isPremium = isAdmin || (profile?.premiumUntil ? profile.premiumUntil.toDate() > new Date() : false) || isGuest;
 
   const getRemainingAttempts = (type: 'gen' | 'correct') => {
     if (isAdmin) return Infinity;
+    if (isGuest) {
+      if (type === 'gen') return Math.max(0, 3 - guestAttempts);
+      return 0; // Guest can't correct
+    }
     
     const lastUse = profile?.lastUsageResetDate?.toDate();
     const today = new Date();
@@ -147,7 +174,18 @@ export default function PremiumTools() {
   };
 
   const updateUsage = async (type: 'gen' | 'correct') => {
-    if (isAdmin || !profile) return;
+    if (isAdmin) return;
+    
+    if (isGuest) {
+      if (type === 'gen') {
+        const newCount = guestAttempts + 1;
+        setGuestAttempts(newCount);
+        localStorage.setItem('guestGenCount', newCount.toString());
+      }
+      return;
+    }
+
+    if (!profile) return;
 
     const lastUse = profile.lastUsageResetDate?.toDate();
     const today = new Date();
@@ -286,9 +324,13 @@ export default function PremiumTools() {
   };
 
   const generateContent = async () => {
-    if (!profile) return;
+    if (!profile && !isGuest) return;
     if (!canGenerate('gen')) {
-      alert('لقد استنفدت حد التوليد اليومي (وثيقة واحدة في اليوم). يمكنك المحاولة مرة أخرى غداً.');
+      if (isGuest) {
+        alert('لقد استنفدت المحاولات المجانية (3 مرات). يرجى إنشاء حساب للمتابعة.');
+      } else {
+        alert('لقد استنفدت حد التوليد اليومي (وثيقة واحدة في اليوم). يمكنك المحاولة مرة أخرى غداً.');
+      }
       return;
     }
 
@@ -296,12 +338,15 @@ export default function PremiumTools() {
     setIsGenerating(true);
     try {
       await updateUsage('gen');
+      
+      const teacherName = isGuest ? "أستاذ زائر" : `${teacherFirstName} ${teacherLastName}`;
+      const schoolName = isGuest ? "مؤسسة زائرة" : school;
 
       let prompt = `أنت خبير تربوي جزائري رائد، متخصص في المنهاج الوطني الجزائري (G2) للجيل الثاني.
       مهمتك هي صياغة ${genScope === 'lesson_plan' ? 'مذكرة بيداغوجية احترافية' : 'تقويم رسمي'} يطابق النماذج المعتمدة لوزارة التربية الوطنية.
       
       [المعلومات العامة]:
-      - الأستاذ: ${teacherFirstName} ${teacherLastName} | المؤسسة: ${school}
+      - الأستاذ: ${teacherName} | المؤسسة: ${schoolName}
       - الطور: ${phase} | المستوى: ${level} | المادة: ${subject}
       - اللغة المطلوبة للتوليد: ${genLanguage} (ar=Arabic, fr=French, en=English)
 
@@ -356,7 +401,10 @@ export default function PremiumTools() {
       - استخدم HTML5 نظيف بجداول عريضة للغاية (Full Width).
       - اجعل الجداول واضحة وسهلة القراءة ولا تسمح بالنص العمودي.
       - اجعل الخطوط كبيرة وواضحة (Header 20px, Text 16px).
-      - المحتوى يجب أن يكون عالي الجودة بيداغوجياً ومطابق تماماً للنماذج الجزائرية الحديثة.`;
+      - المحتوى يجب أن يكون عالي الجودة بيداغوجيا ومطابق تماما للنماذج الجزائرية الحديثة.`;
+
+      const ai = getAi();
+      if (!ai) throw new Error('AI service initialization failed. Missing API key.');
 
       const response = await ai.models.generateContent({
         model: "gemini-flash-latest",
@@ -387,6 +435,9 @@ export default function PremiumTools() {
       Content: ${correctText}
       Task: Provide a detailed correction, grade (out of 20), and constructive feedback.
       Language: Arabic`;
+
+      const ai = getAi();
+      if (!ai) throw new Error('AI service initialization failed. Missing API key.');
 
       const response = await ai.models.generateContent({
         model: "gemini-flash-latest",
@@ -501,36 +552,100 @@ export default function PremiumTools() {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20" dir="rtl">
       {isAdmin && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-slate-900 border border-purple-500/30 p-6 rounded-[32px] relative shadow-2xl">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h3 className="text-xl font-black text-white flex items-center gap-2">
-                <Lock className="w-5 h-5 text-purple-500" />
-                لوحة تحكم المسؤول
-              </h3>
-              <p className="text-slate-400 text-xs font-medium">توليد وإدارة أكواد تفعيل المشتركين</p>
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          className="bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 border-2 border-amber-500/30 p-8 rounded-[40px] relative shadow-[0_0_80px_-20px_rgba(245,158,11,0.2)] backdrop-blur-3xl overflow-hidden group"
+        >
+          {/* Decorative Background Glow */}
+          <div className="absolute -top-24 -left-24 w-64 h-64 bg-amber-500/10 rounded-full blur-[100px] pointer-events-none group-hover:bg-amber-500/20 transition-all duration-700"></div>
+          <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-purple-500/10 rounded-full blur-[100px] pointer-events-none group-hover:bg-purple-500/20 transition-all duration-700"></div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-8 relative z-10">
+            <div className="flex items-center gap-6">
+              <div className="bg-amber-500 p-4 rounded-[1.5rem] shadow-xl shadow-amber-500/20 transform group-hover:rotate-6 transition-transform">
+                <Lock className="w-10 h-10 text-slate-900" />
+              </div>
+              <div className="text-right">
+                <h3 className="text-3xl font-black text-white tracking-tight drop-shadow-sm">
+                  لوحة تحكم المسؤول
+                </h3>
+                <p className="text-amber-500 text-xs font-black uppercase tracking-[0.3em] mt-1 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-amber-500 rounded-full animate-ping"></span>
+                  Admin Command Center
+                </p>
+              </div>
             </div>
-            <button onClick={() => setIsAdminPanelOpen(!isAdminPanelOpen)} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-2xl font-black text-sm">
-              {isAdminPanelOpen ? 'إغلاق اللوحة' : 'فتح لوحة الأكواد'}
-            </button>
+            
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <button 
+                onClick={generateNewCode} 
+                className="flex items-center gap-3 text-base font-black bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-900 px-8 py-4 rounded-2xl shadow-2xl shadow-amber-500/20 transition-all active:scale-95 border-b-4 border-orange-700"
+              >
+                <Plus className="w-6 h-6" />
+                توليد كود تفعيل
+              </button>
+              <button 
+                onClick={() => setIsAdminPanelOpen(!isAdminPanelOpen)} 
+                className={`flex items-center gap-2 px-8 py-4 rounded-2xl font-black text-base border-2 transition-all ${isAdminPanelOpen ? 'bg-white text-slate-900 border-white' : 'bg-slate-800/50 text-white border-slate-700 hover:border-slate-500'}`}
+              >
+                {isAdminPanelOpen ? 'إغلاق اللوحة' : `سجل الأكواد (${adminCodes.length})`}
+                <ChevronRight className={`w-5 h-5 transition-transform ${isAdminPanelOpen ? 'rotate-90' : 'rotate-0'}`} />
+              </button>
+            </div>
           </div>
+
           <AnimatePresence>
             {isAdminPanelOpen && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="mt-6 pt-6 border-t border-slate-800 space-y-4 overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400 text-sm font-bold">الأكواد المتوفرة ({adminCodes.length})</span>
-                  <button onClick={generateNewCode} className="flex items-center gap-2 text-xs font-black bg-emerald-500/10 text-emerald-500 px-4 py-2 rounded-xl border border-emerald-500/20">
-                    <Plus className="w-4 h-4" />
-                    توليد كود جديد
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-64 overflow-y-auto">
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }} 
+                animate={{ height: 'auto', opacity: 1 }} 
+                exit={{ height: 0, opacity: 0 }} 
+                className="mt-10 pt-10 border-t border-slate-800/50 overflow-hidden"
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pb-6">
                   {adminCodes.map((c) => (
-                    <div key={c.id} className="bg-slate-950 border border-slate-800 p-4 rounded-2xl flex flex-col gap-1">
-                      <span className="text-lg font-mono font-black text-white">{c.code}</span>
-                    </div>
+                    <motion.div 
+                      layout
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      key={c.id} 
+                      className="bg-slate-900/80 backdrop-blur-md border-2 border-slate-800 p-6 rounded-3xl flex flex-col gap-4 group/card hover:border-amber-500/50 transition-all hover:bg-slate-800 shadow-lg"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Active License</span>
+                        <div className="px-2 py-1 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                           <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-2xl font-mono font-black text-amber-400 selection:bg-amber-500/30 tracking-wider">
+                          {c.code}
+                        </span>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(c.code);
+                            alert('تم نسخ الكود بنجاح!');
+                          }}
+                          className="p-3 bg-slate-800 hover:bg-amber-500 hover:text-slate-900 text-amber-500 rounded-xl transition-all shadow-inner"
+                        >
+                          <ClipboardCheck className="w-5 h-5" />
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between mt-2 pt-4 border-t border-slate-800">
+                         <span className="text-[8px] font-bold text-slate-600 uppercase">Created: {new Date(c.createdAt?.toDate()).toLocaleDateString()}</span>
+                         <button className="text-[8px] font-black text-red-500/50 hover:text-red-500 transition-colors uppercase tracking-widest">Revoke</button>
+                      </div>
+                    </motion.div>
                   ))}
                 </div>
+                {adminCodes.length === 0 && (
+                  <div className="py-20 text-center bg-slate-950/30 rounded-[32px] border border-slate-800/50 border-dashed">
+                    <Sparkles className="w-12 h-12 text-slate-800 mx-auto mb-4" />
+                    <p className="text-slate-500 font-black text-lg">لا توجد أكواد نشطة حالياً</p>
+                    <p className="text-slate-700 text-xs mt-2 uppercase tracking-widest font-bold">Press generate to create a new one</p>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -662,13 +777,17 @@ export default function PremiumTools() {
                   </div>
                 )}
                 
-                <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-8 space-y-6">
-                  <TextAreaField label="توجيهات إضافية" value={aiPrompt} onChange={setAiPrompt} placeholder="مثلاً: استخدم لغة بسيطة..." />
-                  <button onClick={generateContent} disabled={isGenerating || !topic} className="w-full py-5 bg-purple-600 hover:bg-purple-700 text-white font-black rounded-2xl transition-all flex items-center justify-center gap-3">
-                    {isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Wand2 className="w-6 h-6" />}
-                    توليد الوثيقة
-                  </button>
-                </div>
+            <div className="bg-slate-900 rounded-[40px] border border-slate-800 p-8 space-y-6">
+              <TextAreaField label="توجيهات إضافية" value={aiPrompt} onChange={setAiPrompt} placeholder="مثلاً: استخدم لغة بسيطة..." />
+              <button 
+                onClick={generateContent} 
+                disabled={isGenerating} 
+                className="w-full py-5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black rounded-2xl transition-all flex items-center justify-center gap-3"
+              >
+                {isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Wand2 className="w-6 h-6" />}
+                {isGenerating ? 'جاري التوليد...' : 'توليد الوثيقة'}
+              </button>
+            </div>
               </div>
 
               <div className="lg:sticky lg:top-8 space-y-6">
